@@ -49,6 +49,22 @@ app.get("/", (req, res) => {
 });
 
 // ------------------------------
+// GET ALL MARKETPLACE NFTs
+// ------------------------------
+app.get("/api/nfts", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM marketplace_nfts WHERE minted = true AND sold = false ORDER BY id DESC"
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("NFT fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch NFTs" });
+  }
+});
+
+// ------------------------------
 // START SERVER
 // ------------------------------
 const PORT = process.env.PORT || 5000;
