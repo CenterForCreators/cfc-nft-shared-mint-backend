@@ -49,6 +49,46 @@ app.get("/", (req, res) => {
 });
 
 // ------------------------------
+// RECEIVE NFT FROM CREATOR BACKEND
+// ------------------------------
+app.post("/api/add-nft", async (req, res) => {
+  try {
+    const {
+      submission_id,
+      name,
+      image_cid,
+      metadata_cid,
+      price_xrp,
+      price_rlusd,
+      creator_wallet
+    } = req.body;
+
+    // Insert NFT into marketplace table
+    await pool.query(
+      `
+      INSERT INTO marketplace_nfts
+      (submission_id, name, image_cid, metadata_cid, price_xrp, price_rlusd, creator_wallet, minted, sold)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,true,false)
+      `,
+      [
+        submission_id,
+        name,
+        image_cid,
+        metadata_cid,
+        price_xrp,
+        price_rlusd,
+        creator_wallet
+      ]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("ADD NFT error:", err);
+    res.status(500).json({ error: "Failed to add NFT" });
+  }
+});
+
+// ------------------------------
 // GET ALL MARKETPLACE NFTs
 // ------------------------------
 app.get("/api/nfts", async (req, res) => {
@@ -56,7 +96,6 @@ app.get("/api/nfts", async (req, res) => {
     const result = await pool.query(
       "SELECT * FROM marketplace_nfts WHERE minted = true AND sold = false ORDER BY id DESC"
     );
-
     res.json(result.rows);
   } catch (err) {
     console.error("NFT fetch error:", err);
