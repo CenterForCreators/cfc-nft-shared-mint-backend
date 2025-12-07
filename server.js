@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import pg from "pg";
 import dotenv from "dotenv";
+import axios from "axios";
 
 dotenv.config();
 
@@ -14,19 +15,20 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Create table if not exists
+// Create marketplace table if not exists
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS marketplace_nfts (
       id SERIAL PRIMARY KEY,
       submission_id INTEGER,
       name TEXT,
+      description TEXT,
       image_cid TEXT,
       metadata_cid TEXT,
       price_xrp TEXT,
       price_rlusd TEXT,
       creator_wallet TEXT,
-      minted BOOLEAN DEFAULT false,
+      minted BOOLEAN DEFAULT true,
       sold BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
     );
@@ -56,6 +58,7 @@ app.post("/api/add-nft", async (req, res) => {
     const {
       submission_id,
       name,
+      description,
       image_cid,
       metadata_cid,
       price_xrp,
@@ -63,16 +66,16 @@ app.post("/api/add-nft", async (req, res) => {
       creator_wallet
     } = req.body;
 
-    // Insert NFT into marketplace table
     await pool.query(
       `
       INSERT INTO marketplace_nfts
-      (submission_id, name, image_cid, metadata_cid, price_xrp, price_rlusd, creator_wallet, minted, sold)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,true,false)
+      (submission_id, name, description, image_cid, metadata_cid, price_xrp, price_rlusd, creator_wallet, minted, sold)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,false)
       `,
       [
         submission_id,
         name,
+        description,
         image_cid,
         metadata_cid,
         price_xrp,
@@ -91,7 +94,7 @@ app.post("/api/add-nft", async (req, res) => {
 // ------------------------------
 // GET ALL MARKETPLACE NFTs
 // ------------------------------
-app.get("/api/nfts", async (req, res) => {
+app.get("/api/market/all", async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM marketplace_nfts WHERE minted = true AND sold = false ORDER BY id DESC"
@@ -100,6 +103,103 @@ app.get("/api/nfts", async (req, res) => {
   } catch (err) {
     console.error("NFT fetch error:", err);
     res.status(500).json({ error: "Failed to fetch NFTs" });
+  }
+});
+
+// ------------------------------
+// PAY XRP FOR NFT
+// ------------------------------
+app.post("/api/market/pay-xrp", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    const nft = await pool.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1",
+      [id]
+    );
+
+    if (!nft.rows.length) {
+      return res.status(404).json({ error: "NFT not found" });
+    }
+
+    const item = nft.rows[0];
+    const drops = String(Number(item.price_xrp) * 1_000_000);
+
+    const payload = {
+      txjson: {
+        TransactionType: "Payment",
+        Destination: process.env.PAY_DESTINATION,
+        Amount: drops
+      },
+      options: { submit: true }
+    };
+
+    const r = await axios.post(
+      "https://xumm.app/api/v1/platform/payload",
+      payload,
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    res.json({ link: r.data.next.always });
+  } catch (err) {
+    console.error("PAY XRP error:", err);
+    res.status(500).json({ error: "Failed to create payment" });
+  }
+});
+
+// ------------------------------
+// PAY RLUSD FOR NFT
+// ------------------------------
+app.post("/api/market/pay-rlusd", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    const nft = await pool.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1",
+      [id]
+    );
+
+    if (!nft.rows.length) {
+      return res.status(404).json({ error: "NFT not found" });
+    }
+
+    const item = nft.rows[0];
+
+    const payload = {
+      txjson: {
+        TransactionType: "Payment",
+        Destination: process.env.PAY_DESTINATION,
+        Amount: {
+          currency: "524C555344000000000000000000000000000000",
+          issuer: process.env.PAY_DESTINATION,
+          value: String(item.price_rlusd)
+        }
+      },
+      options: { submit: true }
+    };
+
+    const r = await axios.post(
+      "https://xumm.app/api/v1/platform/payload",
+      payload,
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    res.json({ link: r.data.next.always });
+  } catch (err) {
+    console.error("PAY RLUSD error:", err);
+    res.status(500).json({ error: "Failed to create payment" });
   }
 });
 
