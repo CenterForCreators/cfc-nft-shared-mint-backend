@@ -185,7 +185,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     };
 
     const r = await axios.post(
-      "httpsumm.app/api/v1/platform/payload",
+      "https://xumm.app/api/v1/platform/payload",
       payload,
       {
         headers: {
