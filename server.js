@@ -115,7 +115,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT (WITH REDIRECT + REAL PRICE)
+// PAY XRP FOR NFT (REAL PRICE + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -132,9 +132,18 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // ✅ FIX — ensure price_xrp is numeric before converting to drops
-    const xrpAmount = Number(item.price_xrp);
-    const drops = String(xrpAmount * 1_000_000);
+    // Fetch live XRP/USD price
+    const priceApi = await axios.get(
+      "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd"
+    );
+    const xrpUsd = priceApi.data.ripple.usd;
+
+    // Convert RLUSD price (USD) → XRP
+    const usdAmount = Number(item.price_rlusd);
+    const xrpAmount = usdAmount / xrpUsd;
+
+    // XRP → drops
+    const drops = String(Math.round(xrpAmount * 1_000_000));
 
     const payload = {
       txjson: {
@@ -164,6 +173,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     );
 
     res.json({ link: r.data.next.always });
+
   } catch (err) {
     console.error("PAY XRP error:", err);
     res.status(500).json({ error: "Failed to create payment" });
@@ -171,7 +181,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT (WITH REDIRECT + REAL PRICE)
+// PAY RLUSD FOR NFT (REDIRECT + CLEAN VALUE)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -188,7 +198,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // ✅ FIX — ensure RLUSD is numeric
+    // Ensure numeric RLUSD
     const rlusdAmount = String(Number(item.price_rlusd));
 
     const payload = {
@@ -223,6 +233,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     );
 
     res.json({ link: r.data.next.always });
+
   } catch (err) {
     console.error("PAY RLUSD error:", err);
     res.status(500).json({ error: "Failed to create payment" });
