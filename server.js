@@ -115,7 +115,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT  (WITH REDIRECT ADDED)
+// PAY XRP FOR NFT (WITH REDIRECT + REAL PRICE)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -131,7 +131,10 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     }
 
     const item = nft.rows[0];
-    const drops = String(Number(item.price_xrp) * 1_000_000);
+
+    // ✅ FIX — ensure price_xrp is numeric before converting to drops
+    const xrpAmount = Number(item.price_xrp);
+    const drops = String(xrpAmount * 1_000_000);
 
     const payload = {
       txjson: {
@@ -168,7 +171,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT  (WITH REDIRECT ADDED)
+// PAY RLUSD FOR NFT (WITH REDIRECT + REAL PRICE)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -185,6 +188,9 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
+    // ✅ FIX — ensure RLUSD is numeric
+    const rlusdAmount = String(Number(item.price_rlusd));
+
     const payload = {
       txjson: {
         TransactionType: "Payment",
@@ -192,7 +198,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         Amount: {
           currency: "524C555344000000000000000000000000000000",
           issuer: process.env.PAY_DESTINATION,
-          value: String(item.price_rlusd)
+          value: rlusdAmount
         }
       },
       options: {
