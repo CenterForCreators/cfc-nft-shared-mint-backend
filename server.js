@@ -115,7 +115,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT (REAL PRICE + REDIRECT)
+// PAY XRP FOR NFT (REAL PRICE + VALIDATION + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -132,18 +132,13 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Fetch live XRP/USD price
-    const priceApi = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd"
-    );
-    const xrpUsd = priceApi.data.ripple.usd;
+    // ✅ FIX #1 — validate XRP price before continuing
+    if (!item.price_xrp || isNaN(Number(item.price_xrp))) {
+      return res.status(400).json({ error: "Invalid XRP price" });
+    }
 
-    // Convert RLUSD price (USD) → XRP
-    const usdAmount = Number(item.price_rlusd);
-    const xrpAmount = usdAmount / xrpUsd;
-
-    // XRP → drops
-    const drops = String(Math.round(xrpAmount * 1_000_000));
+    const xrpAmount = Number(item.price_xrp);
+    const drops = String(xrpAmount * 1_000_000);
 
     const payload = {
       txjson: {
@@ -181,7 +176,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT (REDIRECT + CLEAN VALUE)
+// PAY RLUSD FOR NFT (VALIDATION + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -198,7 +193,11 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Ensure numeric RLUSD
+    // ✅ FIX #2 — validate RLUSD price before continuing
+    if (!item.price_rlusd || isNaN(Number(item.price_rlusd))) {
+      return res.status(400).json({ error: "Invalid RLUSD price" });
+    }
+
     const rlusdAmount = String(Number(item.price_rlusd));
 
     const payload = {
