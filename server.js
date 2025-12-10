@@ -66,8 +66,8 @@ app.post("/api/add-nft", async (req, res) => {
       price_xrp,
       price_rlusd,
       creator_wallet,
-      terms,       // NEW
-      quantity     // NEW
+      terms,
+      quantity
     } = req.body;
 
     await pool.query(
@@ -115,7 +115,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT
+// PAY XRP FOR NFT  (WITH REDIRECT ADDED)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -139,7 +139,13 @@ app.post("/api/market/pay-xrp", async (req, res) => {
         Destination: process.env.PAY_DESTINATION,
         Amount: drops
       },
-      options: { submit: true }
+      options: {
+        submit: true,
+        return_url: {
+          web: "https://centerforcreators.com/nft-marketplace",
+          app: "https://centerforcreators.com/nft-marketplace"
+        }
+      }
     };
 
     const r = await axios.post(
@@ -162,7 +168,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT
+// PAY RLUSD FOR NFT  (WITH REDIRECT ADDED)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -189,7 +195,13 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
           value: String(item.price_rlusd)
         }
       },
-      options: { submit: true }
+      options: {
+        submit: true,
+        return_url: {
+          web: "https://centerforcreators.com/nft-marketplace",
+          app: "https://centerforcreators.com/nft-marketplace"
+        }
+      }
     };
 
     const r = await axios.post(
