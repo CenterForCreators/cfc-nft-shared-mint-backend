@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -38,6 +37,25 @@ async function initDB() {
   `);
 }
 initDB();
+
+// ------------------------------
+// HELPER: safely parse prices
+// ------------------------------
+function parsePrice(raw) {
+  if (raw === null || raw === undefined) return NaN;
+
+  // If it’s already a number
+  if (typeof raw === "number") return raw;
+
+  if (typeof raw === "string") {
+    // Allow values like "219", "219 XRP", "35 RLUSD", etc.
+    const cleaned = raw.replace(/[^0-9.]/g, "");
+    if (!cleaned) return NaN;
+    return Number(cleaned);
+  }
+
+  return NaN;
+}
 
 // ------------------------------
 // APP
@@ -116,7 +134,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT (REAL PRICE + VALIDATION + REDIRECT)
+// PAY XRP FOR NFT (PRICE + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -133,12 +151,13 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // ✅ FIX #1 — validate XRP price before continuing
-    if (!item.price_xrp || isNaN(Number(item.price_xrp))) {
+    // Accept both "219" and "219 XRP"
+    const xrpAmount = parsePrice(item.price_xrp);
+    if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
+      console.error("Invalid XRP price stored:", item.price_xrp);
       return res.status(400).json({ error: "Invalid XRP price" });
     }
 
-    const xrpAmount = Number(item.price_xrp);
     const drops = String(xrpAmount * 1_000_000);
 
     const payload = {
@@ -177,7 +196,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT (VALIDATION + REDIRECT)
+// PAY RLUSD FOR NFT (PRICE + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -194,12 +213,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // ✅ FIX #2 — validate RLUSD price before continuing
-    if (!item.price_rlusd || isNaN(Number(item.price_rlusd))) {
+    // Accept both "35" and "35 RLUSD"
+    const rlusdAmount = parsePrice(item.price_rlusd);
+    if (!Number.isFinite(rlusdAmount) || rlusdAmount <= 0) {
+      console.error("Invalid RLUSD price stored:", item.price_rlusd);
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
-
-    const rlusdAmount = String(Number(item.price_rlusd));
 
     const payload = {
       txjson: {
@@ -208,7 +227,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         Amount: {
           currency: "524C555344000000000000000000000000000000",
           issuer: process.env.PAY_DESTINATION,
-          value: rlusdAmount
+          value: String(rlusdAmount)
         }
       },
       options: {
