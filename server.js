@@ -44,11 +44,12 @@ initDB();
 const app = express();
 app.use(express.json());
 
-// ✅ FIX — proper CORS so browser can fetch marketplace data
+// ✅ FIX: Allow GitHub Pages + your domain
 app.use(cors({
-  origin: "*",
-  methods: ["GET","POST"],
-  allowedHeaders: ["Content-Type"]
+  origin: [
+    "https://centerforcreators.github.io",
+    "https://centerforcreators.com"
+  ]
 }));
 
 // ------------------------------
@@ -187,7 +188,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     const { id } = req.body;
 
     const nft = await pool.query(
-      "SELECT * FROM marketplace_nfts WHERE id=$1",
+      "SELECT * OF marketplace_nfts WHERE id=$1",
       [id]
     );
 
