@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -115,7 +116,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT (VALIDATION + REDIRECT)
+// PAY XRP FOR NFT (REAL PRICE + VALIDATION + REDIRECT)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -132,12 +133,13 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Ensure numeric XRP price
+    // ✅ FIX #1 — validate XRP price before continuing
     if (!item.price_xrp || isNaN(Number(item.price_xrp))) {
       return res.status(400).json({ error: "Invalid XRP price" });
     }
 
-    const drops = String(Number(item.price_xrp) * 1_000_000);
+    const xrpAmount = Number(item.price_xrp);
+    const drops = String(xrpAmount * 1_000_000);
 
     const payload = {
       txjson: {
@@ -192,10 +194,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Ensure RLUSD is numeric
+    // ✅ FIX #2 — validate RLUSD price before continuing
     if (!item.price_rlusd || isNaN(Number(item.price_rlusd))) {
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
+
+    const rlusdAmount = String(Number(item.price_rlusd));
 
     const payload = {
       txjson: {
@@ -204,7 +208,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         Amount: {
           currency: "524C555344000000000000000000000000000000",
           issuer: process.env.PAY_DESTINATION,
-          value: String(Number(item.price_rlusd))
+          value: rlusdAmount
         }
       },
       options: {
