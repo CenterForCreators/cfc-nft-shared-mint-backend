@@ -30,6 +30,7 @@ async function initDB() {
       creator_wallet TEXT,
       terms TEXT,
       quantity INTEGER,
+      sold_count INTEGER DEFAULT 0,  -- Added sold_count
       minted BOOLEAN DEFAULT true,
       sold BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
@@ -44,11 +45,9 @@ initDB();
 function parsePrice(raw) {
   if (raw === null || raw === undefined) return NaN;
 
-  // If it’s already a number
   if (typeof raw === "number") return raw;
 
   if (typeof raw === "string") {
-    // Allow values like "219", "219 XRP", "35 RLUSD", etc.
     const cleaned = raw.replace(/[^0-9.]/g, "");
     if (!cleaned) return NaN;
     return Number(cleaned);
@@ -151,12 +150,17 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Accept both "219" and "219 XRP"
     const xrpAmount = parsePrice(item.price_xrp);
     if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
       console.error("Invalid XRP price stored:", item.price_xrp);
       return res.status(400).json({ error: "Invalid XRP price" });
     }
+
+    // Update the sold count and reduce quantity
+    await pool.query(
+      "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
+      [id]
+    );
 
     const drops = String(xrpAmount * 1_000_000);
 
@@ -213,12 +217,17 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const item = nft.rows[0];
 
-    // Accept both "35" and "35 RLUSD"
     const rlusdAmount = parsePrice(item.price_rlusd);
     if (!Number.isFinite(rlusdAmount) || rlusdAmount <= 0) {
       console.error("Invalid RLUSD price stored:", item.price_rlusd);
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
+
+    // Update the sold count and reduce quantity
+    await pool.query(
+      "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
+      [id]
+    );
 
     const payload = {
       txjson: {
