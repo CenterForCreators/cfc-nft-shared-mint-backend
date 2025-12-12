@@ -30,7 +30,7 @@ async function initDB() {
       creator_wallet TEXT,
       terms TEXT,
       quantity INTEGER,
-      sold_count INTEGER DEFAULT 0,  -- Added sold_count
+      sold_count INTEGER DEFAULT 0,
       minted BOOLEAN DEFAULT true,
       sold BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
@@ -44,15 +44,12 @@ initDB();
 // ------------------------------
 function parsePrice(raw) {
   if (raw === null || raw === undefined) return NaN;
-
   if (typeof raw === "number") return raw;
-
   if (typeof raw === "string") {
     const cleaned = raw.replace(/[^0-9.]/g, "");
     if (!cleaned) return NaN;
     return Number(cleaned);
   }
-
   return NaN;
 }
 
@@ -118,13 +115,27 @@ app.post("/api/add-nft", async (req, res) => {
 });
 
 // ------------------------------
-// GET ALL MARKETPLACE NFTs
+// ✅ FIXED: GET ALL MARKETPLACE NFTs
 // ------------------------------
 app.get("/api/market/all", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM marketplace_nfts WHERE minted = true AND sold = false ORDER BY id DESC"
-    );
+    // Mark NFTs as sold when quantity hits 0
+    await pool.query(`
+      UPDATE marketplace_nfts
+      SET sold = true
+      WHERE quantity <= 0 AND sold = false
+    `);
+
+    // Fetch NFTs with calculated remaining quantity
+    const result = await pool.query(`
+      SELECT
+        *,
+        GREATEST(quantity, 0) AS quantity_remaining
+      FROM marketplace_nfts
+      WHERE minted = true AND sold = false
+      ORDER BY id DESC
+    `);
+
     res.json(result.rows);
   } catch (err) {
     console.error("NFT fetch error:", err);
@@ -152,11 +163,9 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 
     const xrpAmount = parsePrice(item.price_xrp);
     if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
-      console.error("Invalid XRP price stored:", item.price_xrp);
       return res.status(400).json({ error: "Invalid XRP price" });
     }
 
-    // Update the sold count and reduce quantity
     await pool.query(
       "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
       [id]
@@ -219,11 +228,9 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const rlusdAmount = parsePrice(item.price_rlusd);
     if (!Number.isFinite(rlusdAmount) || rlusdAmount <= 0) {
-      console.error("Invalid RLUSD price stored:", item.price_rlusd);
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
 
-    // Update the sold count and reduce quantity
     await pool.query(
       "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
       [id]
