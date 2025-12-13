@@ -30,7 +30,7 @@ async function initDB() {
       creator_wallet TEXT,
       terms TEXT,
       quantity INTEGER,
-      sold_count INTEGER DEFAULT 0,  -- Added sold_count
+      sold_count INTEGER DEFAULT 0,
       minted BOOLEAN DEFAULT true,
       sold BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
@@ -44,7 +44,6 @@ initDB();
 // ------------------------------
 function parsePrice(raw) {
   if (raw === null || raw === undefined) return NaN;
-
   if (typeof raw === "number") return raw;
 
   if (typeof raw === "string") {
@@ -52,7 +51,6 @@ function parsePrice(raw) {
     if (!cleaned) return NaN;
     return Number(cleaned);
   }
-
   return NaN;
 }
 
@@ -118,9 +116,7 @@ app.post("/api/add-nft", async (req, res) => {
 });
 
 // ------------------------------
-// ✅ FIXED: GET ALL MARKETPLACE NFTs (DO NOT HIDE SOLD OUT)
-// - keeps NFTs visible even when quantity hits 0
-// - sends quantity_remaining + sold_out to frontend
+// GET ALL MARKETPLACE NFTs
 // ------------------------------
 app.get("/api/market/all", async (req, res) => {
   try {
@@ -142,7 +138,7 @@ app.get("/api/market/all", async (req, res) => {
 });
 
 // ------------------------------
-// PAY XRP FOR NFT (PRICE + REDIRECT)
+// PAY XRP FOR NFT (CREATE PAYLOAD ONLY)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -158,18 +154,11 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     }
 
     const item = nft.rows[0];
-
     const xrpAmount = parsePrice(item.price_xrp);
+
     if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
-      console.error("Invalid XRP price stored:", item.price_xrp);
       return res.status(400).json({ error: "Invalid XRP price" });
     }
-
-    // Update the sold count and reduce quantity
-    await pool.query(
-      "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
-      [id]
-    );
 
     const drops = String(xrpAmount * 1_000_000);
 
@@ -184,6 +173,11 @@ app.post("/api/market/pay-xrp", async (req, res) => {
         return_url: {
           web: "https://centerforcreators.com/nft-marketplace",
           app: "https://centerforcreators.com/nft-marketplace"
+        }
+      },
+      custom_meta: {
+        blob: {
+          nft_id: id
         }
       }
     };
@@ -201,7 +195,6 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     );
 
     res.json({ link: r.data.next.always });
-
   } catch (err) {
     console.error("PAY XRP error:", err);
     res.status(500).json({ error: "Failed to create payment" });
@@ -209,7 +202,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT (PRICE + REDIRECT)
+// PAY RLUSD FOR NFT (CREATE PAYLOAD ONLY)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -225,18 +218,11 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     }
 
     const item = nft.rows[0];
-
     const rlusdAmount = parsePrice(item.price_rlusd);
+
     if (!Number.isFinite(rlusdAmount) || rlusdAmount <= 0) {
-      console.error("Invalid RLUSD price stored:", item.price_rlusd);
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
-
-    // Update the sold count and reduce quantity
-    await pool.query(
-      "UPDATE marketplace_nfts SET sold_count = sold_count + 1, quantity = quantity - 1 WHERE id = $1",
-      [id]
-    );
 
     const payload = {
       txjson: {
@@ -254,6 +240,11 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
           web: "https://centerforcreators.com/nft-marketplace",
           app: "https://centerforcreators.com/nft-marketplace"
         }
+      },
+      custom_meta: {
+        blob: {
+          nft_id: id
+        }
       }
     };
 
@@ -270,10 +261,43 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     );
 
     res.json({ link: r.data.next.always });
-
   } catch (err) {
     console.error("PAY RLUSD error:", err);
     res.status(500).json({ error: "Failed to create payment" });
+  }
+});
+
+// ------------------------------
+// ✅ XAMAN WEBHOOK — CONFIRMED PAYMENT ONLY
+// ------------------------------
+app.post("/api/xaman/webhook", async (req, res) => {
+  try {
+    const payload = req.body;
+
+    if (
+      payload?.payload?.response?.dispatched_result !== "tesSUCCESS" ||
+      payload?.payload?.meta?.signed !== true
+    ) {
+      return res.json({ ok: true });
+    }
+
+    const nftId = payload?.payload?.custom_meta?.blob?.nft_id;
+    if (!nftId) return res.json({ ok: true });
+
+    await pool.query(
+      `
+      UPDATE marketplace_nfts
+      SET sold_count = sold_count + 1,
+          quantity = quantity - 1
+      WHERE id = $1 AND quantity > 0
+      `,
+      [nftId]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.status(500).json({ error: "Webhook failed" });
   }
 });
 
