@@ -29,6 +29,7 @@ async function initDB() {
       price_rlusd TEXT,
       creator_wallet TEXT,
       terms TEXT,
+      website TEXT,               -- ✅ NEW (public)
       quantity INTEGER,
       sold_count INTEGER DEFAULT 0,
       minted BOOLEAN DEFAULT true,
@@ -83,16 +84,29 @@ app.post("/api/add-nft", async (req, res) => {
       price_rlusd,
       creator_wallet,
       terms,
+      website,            // ✅ NEW
       quantity
     } = req.body;
 
     await pool.query(
       `
       INSERT INTO marketplace_nfts
-      (submission_id, name, description, image_cid, metadata_cid,
-       price_xrp, price_rlusd, creator_wallet, terms, quantity,
-       minted, sold)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,false)
+      (
+        submission_id,
+        name,
+        description,
+        image_cid,
+        metadata_cid,
+        price_xrp,
+        price_rlusd,
+        creator_wallet,
+        terms,
+        website,
+        quantity,
+        minted,
+        sold
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,false)
       `,
       [
         submission_id,
@@ -104,6 +118,7 @@ app.post("/api/add-nft", async (req, res) => {
         price_rlusd,
         creator_wallet,
         terms,
+        website,
         quantity
       ]
     );
