@@ -40,6 +40,53 @@ async function initDB() {
 }
 initDB();
 
+// ✅ Step 3: ensure orders table exists (safe if already created)
+async function initOrdersDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+
+      marketplace_nft_id INTEGER NOT NULL,
+      buyer_wallet TEXT NOT NULL,
+
+      buyer_email TEXT NULL,
+
+      price NUMERIC(20, 8) NOT NULL,
+      currency TEXT NOT NULL, -- 'XRP' or 'RLUSD'
+
+      status TEXT NOT NULL DEFAULT 'PAID', -- PAID | REDEEM_REQUESTED | FULFILLED
+
+      xumm_payload_uuid TEXT NULL,
+      tx_hash TEXT NULL,
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_unique_payload
+    ON orders (xumm_payload_uuid)
+    WHERE xumm_payload_uuid IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_unique_tx
+    ON orders (tx_hash)
+    WHERE tx_hash IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS orders_buyer_wallet_idx
+    ON orders (buyer_wallet);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS orders_marketplace_nft_id_idx
+    ON orders (marketplace_nft_id);
+  `);
+}
+initOrdersDB();
+
 // ------------------------------
 // HELPER: safely parse prices
 // ------------------------------
@@ -284,11 +331,15 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
 // ------------------------------
 // ✅ XAMAN WEBHOOK — CONFIRMED PAYMENT ONLY
+// RULE: create order FIRST, then decrement quantity
 // ------------------------------
 app.post("/api/xaman/webhook", async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const payload = req.body;
 
+    // Only process SUCCESS + signed
     if (
       payload?.payload?.response?.dispatched_result !== "tesSUCCESS" ||
       payload?.payload?.meta?.signed !== true
@@ -299,7 +350,90 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const nftId = payload?.payload?.custom_meta?.blob?.nft_id;
     if (!nftId) return res.json({ ok: true });
 
-    await pool.query(
+    // Idempotency keys (prevent double handling)
+    const xummPayloadUuid =
+      payload?.payload?.payload_uuidv4 ||
+      payload?.payload?.uuid ||
+      payload?.payload_uuidv4 ||
+      null;
+
+    const txHash =
+      payload?.payload?.response?.txid ||
+      payload?.payload?.txid ||
+      payload?.txid ||
+      null;
+
+    const buyerWallet =
+      payload?.payload?.response?.account ||
+      payload?.payload?.response?.Account ||
+      payload?.payload?.meta?.account ||
+      payload?.payload?.meta?.Account ||
+      "UNKNOWN";
+
+    await client.query("BEGIN");
+
+    // Lock the NFT row so two webhooks can't decrement at once
+    const nftRes = await client.query(
+      "SELECT * FROM marketplace_nfts WHERE id = $1 FOR UPDATE",
+      [nftId]
+    );
+
+    if (!nftRes.rows.length) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    const nft = nftRes.rows[0];
+    const qty = Number(nft.quantity || 0);
+
+    // If sold out, do nothing
+    if (qty <= 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    // Determine currency + price for the order
+    // (Prefer detecting token payment, otherwise XRP)
+    let currency = "XRP";
+    let price = parsePrice(nft.price_xrp);
+
+    const deliveredAmount = payload?.payload?.response?.delivered_amount;
+
+    if (deliveredAmount && typeof deliveredAmount === "object") {
+      // RLUSD (or any issued token) payment payload
+      currency = "RLUSD";
+      price = parsePrice(nft.price_rlusd);
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      // Safety: never decrement if we can't record a valid order
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    // 1) Create order FIRST (idempotent)
+    // If webhook fires twice with same payload/tx, this insert will do nothing.
+    const orderInsert = await client.query(
+      `
+      INSERT INTO orders
+        (marketplace_nft_id, buyer_wallet, price, currency, status, xumm_payload_uuid, tx_hash)
+      VALUES
+        ($1, $2, $3, $4, 'PAID', $5, $6)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+      `,
+      [nftId, buyerWallet, String(price), currency, xummPayloadUuid, txHash]
+    );
+
+    // If no row inserted, it means we already processed this payment.
+    // IMPORTANT: do NOT decrement quantity again.
+    if (orderInsert.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    // 2) THEN decrement quantity + increment sold_count
+    await client.query(
       `
       UPDATE marketplace_nfts
       SET sold_count = sold_count + 1,
@@ -309,10 +443,18 @@ app.post("/api/xaman/webhook", async (req, res) => {
       [nftId]
     );
 
+    await client.query("COMMIT");
     res.json({ ok: true });
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (e) {
+      // ignore rollback errors
+    }
     console.error("Webhook error:", err);
     res.status(500).json({ error: "Webhook failed" });
+  } finally {
+    client.release();
   }
 });
 
