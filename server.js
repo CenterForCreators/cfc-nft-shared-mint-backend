@@ -95,8 +95,6 @@ app.use(express.json());
 app.use(cors());
 
 // ------------------------------
-// TEST
-// ------------------------------
 app.get("/", (_, res) => {
   res.send("CFC Marketplace backend running");
 });
@@ -117,7 +115,7 @@ app.get("/api/market/all", async (_, res) => {
 });
 
 // ------------------------------
-// CREATE PAYLOADS (UNCHANGED)
+// PAYLOAD CREATION (UNCHANGED)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   const { id } = req.body;
@@ -169,10 +167,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const nftId = p?.custom_meta?.blob?.nft_id;
     const buyerWallet = p?.response?.account;
 
-    if (!nftId || !buyerWallet) {
-      // HARD FAIL — no wallet, no order, no quantity change
-      return res.json({ ok: true });
-    }
+    if (!nftId || !buyerWallet) return res.json({ ok: true });
 
     const txHash = p?.response?.txid;
     const payloadUUID = p?.payload_uuidv4;
@@ -229,7 +224,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
 });
 
 // ------------------------------
-// STEP 3.3 — GET ORDERS BY WALLET
+// GET ORDERS BY WALLET
 // ------------------------------
 app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
   const { wallet } = req.params;
@@ -246,6 +241,34 @@ app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
   );
 
   res.json(r.rows);
+});
+
+// ------------------------------
+// ✅ STEP 5 — REDEEM REQUEST
+// ------------------------------
+app.post("/api/orders/redeem", async (req, res) => {
+  const { order_id, wallet, email, message } = req.body;
+
+  if (!order_id || !wallet || !email) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const r = await pool.query(
+    `
+    UPDATE orders
+    SET status='REDEEM_REQUESTED',
+        buyer_email=$1
+    WHERE id=$2 AND buyer_wallet=$3 AND status='PAID'
+    RETURNING id
+    `,
+    [email, order_id, wallet]
+  );
+
+  if (!r.rows.length) {
+    return res.status(400).json({ error: "Invalid order or already redeemed" });
+  }
+
+  res.json({ ok: true });
 });
 
 // ------------------------------
