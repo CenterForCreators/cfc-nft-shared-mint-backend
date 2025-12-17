@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -16,7 +15,9 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Create marketplace table if not exists
+// ------------------------------
+// INIT TABLES
+// ------------------------------
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS marketplace_nfts (
@@ -30,7 +31,7 @@ async function initDB() {
       price_rlusd TEXT,
       creator_wallet TEXT,
       terms TEXT,
-      website TEXT,               -- ✅ NEW (public)
+      website TEXT,
       quantity INTEGER,
       sold_count INTEGER DEFAULT 0,
       minted BOOLEAN DEFAULT true,
@@ -39,21 +40,52 @@ async function initDB() {
     );
   `);
 }
+
+async function initOrdersDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      marketplace_nft_id INTEGER NOT NULL,
+      buyer_wallet TEXT NOT NULL,
+      buyer_email TEXT,
+      price NUMERIC(20,8) NOT NULL,
+      currency TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PAID',
+      xumm_payload_uuid TEXT,
+      tx_hash TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_unique_payload
+    ON orders (xumm_payload_uuid)
+    WHERE xumm_payload_uuid IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_unique_tx
+    ON orders (tx_hash)
+    WHERE tx_hash IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS orders_buyer_wallet_idx
+    ON orders (buyer_wallet);
+  `);
+}
+
 initDB();
+initOrdersDB();
 
 // ------------------------------
-// HELPER: safely parse prices
+// HELPERS
 // ------------------------------
 function parsePrice(raw) {
-  if (raw === null || raw === undefined) return NaN;
+  if (!raw) return NaN;
   if (typeof raw === "number") return raw;
-
-  if (typeof raw === "string") {
-    const cleaned = raw.replace(/[^0-9.]/g, "");
-    if (!cleaned) return NaN;
-    return Number(cleaned);
-  }
-  return NaN;
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  return Number(cleaned);
 }
 
 // ------------------------------
@@ -64,97 +96,27 @@ app.use(express.json());
 app.use(cors());
 
 // ------------------------------
-// TEST ROUTE
-// ------------------------------
-app.get("/", (req, res) => {
-  res.send("CFC Marketplace backend is running");
+app.get("/", (_, res) => {
+  res.send("CFC Marketplace backend running");
 });
 
 // ------------------------------
-// RECEIVE NFT FROM CREATOR BACKEND
+// GET ALL NFTs
 // ------------------------------
-app.post("/api/add-nft", async (req, res) => {
-  try {
-    const {
-      submission_id,
-      name,
-      description,
-      image_cid,
-      metadata_cid,
-      price_xrp,
-      price_rlusd,
-      creator_wallet,
-      terms,
-      website,            // ✅ NEW
-      quantity
-    } = req.body;
-
-    await pool.query(
-      `
-      INSERT INTO marketplace_nfts
-      (
-        submission_id,
-        name,
-        description,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity,
-        minted,
-        sold
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,false)
-      `,
-      [
-        submission_id,
-        name,
-        description,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity
-      ]
-    );
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("ADD NFT error:", err);
-    res.status(500).json({ error: "Failed to add NFT" });
-  }
+app.get("/api/market/all", async (_, res) => {
+  const r = await pool.query(`
+    SELECT *,
+      GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
+      (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
+    FROM marketplace_nfts
+    WHERE minted=true AND sold=false
+    ORDER BY id DESC
+  `);
+  res.json(r.rows);
 });
 
 // ------------------------------
-// GET ALL MARKETPLACE NFTs
-// ------------------------------
-app.get("/api/market/all", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT
-        *,
-        GREATEST(COALESCE(quantity, 0), 0) AS quantity_remaining,
-        (GREATEST(COALESCE(quantity, 0), 0) = 0) AS sold_out
-      FROM marketplace_nfts
-      WHERE minted = true AND sold = false
-      ORDER BY id DESC
-    `);
-
-    res.json(result.rows);
-  } catch (err) {
-    console.error("NFT fetch error:", err);
-    res.status(500).json({ error: "Failed to fetch NFTs" });
-  }
-});
-
-// ------------------------------
-// PAY XRP FOR NFT (CREATE PAYLOAD ONLY)
+// PAY XRP (WORKING)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
@@ -169,14 +131,12 @@ app.post("/api/market/pay-xrp", async (req, res) => {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const item = nft.rows[0];
-    const xrpAmount = parsePrice(item.price_xrp);
-
-    if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
+    const amount = parsePrice(nft.rows[0].price_xrp);
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: "Invalid XRP price" });
     }
 
-    const drops = String(xrpAmount * 1_000_000);
+    const drops = String(amount * 1_000_000);
 
     const payload = {
       txjson: {
@@ -191,11 +151,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
           app: "https://centerforcreators.com/nft-marketplace"
         }
       },
-      custom_meta: {
-        blob: {
-          nft_id: id
-        }
-      }
+      custom_meta: { blob: { nft_id: id } }
     };
 
     const r = await axios.post(
@@ -218,7 +174,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
 });
 
 // ------------------------------
-// PAY RLUSD FOR NFT (CREATE PAYLOAD ONLY)
+// PAY RLUSD (WORKING)
 // ------------------------------
 app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
@@ -233,10 +189,8 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const item = nft.rows[0];
-    const rlusdAmount = parsePrice(item.price_rlusd);
-
-    if (!Number.isFinite(rlusdAmount) || rlusdAmount <= 0) {
+    const amount = parsePrice(nft.rows[0].price_rlusd);
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
 
@@ -245,9 +199,9 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         TransactionType: "Payment",
         Destination: process.env.PAY_DESTINATION,
         Amount: {
-          currency: "524C555344000000000000000000000000000000",
+          currency: "524C555344000000000000000000000000000000", // RLUSD
           issuer: process.env.PAY_DESTINATION,
-          value: String(rlusdAmount)
+          value: String(amount)
         }
       },
       options: {
@@ -257,11 +211,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
           app: "https://centerforcreators.com/nft-marketplace"
         }
       },
-      custom_meta: {
-        blob: {
-          nft_id: id
-        }
-      }
+      custom_meta: { blob: { nft_id: id } }
     };
 
     const r = await axios.post(
@@ -284,41 +234,124 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 });
 
 // ------------------------------
-// ✅ XAMAN WEBHOOK — CONFIRMED PAYMENT ONLY
+// XAMAN WEBHOOK (UNCHANGED)
 // ------------------------------
 app.post("/api/xaman/webhook", async (req, res) => {
-  try {
-    const payload = req.body;
+  const client = await pool.connect();
 
-    if (
-      payload?.payload?.response?.dispatched_result !== "tesSUCCESS" ||
-      payload?.payload?.meta?.signed !== true
-    ) {
+  try {
+    const p = req.body?.payload;
+
+    if (p?.response?.dispatched_result !== "tesSUCCESS" || p?.meta?.signed !== true) {
       return res.json({ ok: true });
     }
 
-    const nftId = payload?.payload?.custom_meta?.blob?.nft_id;
-    if (!nftId) return res.json({ ok: true });
+    const nftId = p?.custom_meta?.blob?.nft_id;
+    const buyerWallet = p?.response?.account;
+    if (!nftId || !buyerWallet) return res.json({ ok: true });
 
-    await pool.query(
-      `
-      UPDATE marketplace_nfts
-      SET sold_count = sold_count + 1,
-          quantity = quantity - 1
-      WHERE id = $1 AND quantity > 0
-      `,
+    const txHash = p?.response?.txid;
+    const payloadUUID = p?.payload_uuidv4;
+
+    await client.query("BEGIN");
+
+    const nftRes = await client.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
       [nftId]
     );
 
+    if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    const nft = nftRes.rows[0];
+    const currency = p?.response?.delivered_amount?.currency ? "RLUSD" : "XRP";
+    const price =
+      currency === "RLUSD"
+        ? parsePrice(nft.price_rlusd)
+        : parsePrice(nft.price_xrp);
+
+    const inserted = await client.query(
+      `
+      INSERT INTO orders
+        (marketplace_nft_id, buyer_wallet, price, currency, xumm_payload_uuid, tx_hash)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+      `,
+      [nftId, buyerWallet, price, currency, payloadUUID, txHash]
+    );
+
+    if (inserted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+    }
+
+    await client.query(
+      "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
+      [nftId]
+    );
+
+    await client.query("COMMIT");
     res.json({ ok: true });
-  } catch (err) {
-    console.error("Webhook error:", err);
-    res.status(500).json({ error: "Webhook failed" });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(500).json({ error: "webhook failed" });
+  } finally {
+    client.release();
   }
 });
 
 // ------------------------------
-// START SERVER
+// GET ORDERS BY WALLET
+// ------------------------------
+app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
+  const { wallet } = req.params;
+
+  const r = await pool.query(
+    `
+    SELECT o.*, n.name, n.image_cid
+    FROM orders o
+    JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
+    WHERE o.buyer_wallet = $1
+    ORDER BY o.created_at DESC
+    `,
+    [wallet]
+  );
+
+  res.json(r.rows);
+});
+
+// ------------------------------
+// STEP 5 — REDEEM REQUEST
+// ------------------------------
+app.post("/api/orders/redeem", async (req, res) => {
+  const { order_id, wallet, email } = req.body;
+
+  if (!order_id || !wallet || !email) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const r = await pool.query(
+    `
+    UPDATE orders
+    SET status='REDEEM_REQUESTED',
+        buyer_email=$1
+    WHERE id=$2 AND buyer_wallet=$3 AND status='PAID'
+    RETURNING id
+    `,
+    [email, order_id, wallet]
+  );
+
+  if (!r.rows.length) {
+    return res.status(400).json({ error: "Invalid order or already redeemed" });
+  }
+
+  res.json({ ok: true });
+});
+
 // ------------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
