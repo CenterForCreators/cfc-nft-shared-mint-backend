@@ -147,9 +147,58 @@ app.post("/api/market/pay-xrp", async (req, res) => {
       "X-API-Secret": process.env.XUMM_API_SECRET
     }
   });
+    res.json({ link: r.data.next.always });
+});
+// ------------------------------
+// PAYLOAD CREATION — RLUSD (FIX)
+// ------------------------------
+app.post("/api/market/pay-rlusd", async (req, res) => {
+  const { id } = req.body;
+  const nft = await pool.query(
+    "SELECT * FROM marketplace_nfts WHERE id=$1",
+    [id]
+  );
+
+  if (!nft.rows.length) {
+    return res.status(404).json({ error: "NFT not found" });
+  }
+
+  const amount = parsePrice(nft.rows[0].price_rlusd);
+
+  const payload = {
+    txjson: {
+      TransactionType: "Payment",
+      Destination: process.env.PAY_DESTINATION,
+      Amount: {
+        currency: "RLUSD",
+        issuer: process.env.RLUSD_ISSUER,
+        value: String(amount)
+      }
+    },
+    options: {
+      submit: true,
+      return_url: {
+        web: "https://centerforcreators.com/nft-marketplace",
+        app: "https://centerforcreators.com/nft-marketplace"
+      }
+    },
+    custom_meta: { blob: { nft_id: id } }
+  };
+
+  const r = await axios.post(
+    "https://xumm.app/api/v1/platform/payload",
+    payload,
+    {
+      headers: {
+        "X-API-Key": process.env.XUMM_API_KEY,
+        "X-API-Secret": process.env.XUMM_API_SECRET
+      }
+    }
+  );
 
   res.json({ link: r.data.next.always });
 });
+  
 
 // ------------------------------
 // WEBHOOK — CREATE ORDER THEN DECREMENT
