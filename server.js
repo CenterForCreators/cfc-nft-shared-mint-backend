@@ -79,6 +79,15 @@ initDB();
 initOrdersDB();
 
 // ------------------------------
+// SIMPLE IN-MEMORY CACHE (STEP 8A)
+// ------------------------------
+let marketAllCache = {
+  ts: 0,
+  data: null
+};
+const MARKET_ALL_TTL_MS = 10_000; // 10 seconds
+
+// ------------------------------
 // HELPERS
 // ------------------------------
 function parsePrice(raw) {
@@ -101,18 +110,32 @@ app.get("/", (_, res) => {
 });
 
 // ------------------------------
-// GET ALL NFTs
+// GET ALL NFTs (CACHED — STEP 8A)
 // ------------------------------
 app.get("/api/market/all", async (_, res) => {
-  const r = await pool.query(`
-    SELECT *,
-      GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
-      (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
-    FROM marketplace_nfts
-    WHERE minted=true AND sold=false
-    ORDER BY id DESC
-  `);
-  res.json(r.rows);
+  try {
+    const now = Date.now();
+
+    // Serve cached response if still fresh
+    if (marketAllCache.data && (now - marketAllCache.ts) < MARKET_ALL_TTL_MS) {
+      return res.json(marketAllCache.data);
+    }
+
+    const r = await pool.query(`
+      SELECT *,
+        GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
+        (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
+      FROM marketplace_nfts
+      WHERE minted=true AND sold=false
+      ORDER BY id DESC
+    `);
+
+    marketAllCache = { ts: now, data: r.rows };
+    res.json(r.rows);
+  } catch (e) {
+    console.error("market/all error:", e);
+    res.status(500).json({ error: "Failed to load market" });
+  }
 });
 
 // ------------------------------
@@ -199,7 +222,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         TransactionType: "Payment",
         Destination: process.env.PAY_DESTINATION,
         Amount: {
-          currency: "524C555344000000000000000000000000000000", // RLUSD
+          currency: "524C555344000000000000000000000000000000",
           issuer: process.env.PAY_DESTINATION,
           value: String(amount)
         }
