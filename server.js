@@ -159,23 +159,32 @@ app.post("/api/market/pay-xrp", async (req, res) => {
       return res.status(400).json({ error: "Invalid XRP price" });
     }
 
-    const drops = String(amount * 1_000_000);
+   const creatorWallet = nft.rows[0].creator_wallet;
 
-    const payload = {
-      txjson: {
-        TransactionType: "Payment",
-        Destination: process.env.PAY_DESTINATION,
-        Amount: drops
-      },
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
-      },
-      custom_meta: { blob: { nft_id: id } }
-    };
+const creatorAmount = amount * CREATOR_PERCENT;
+const platformAmount = amount * PLATFORM_FEE_PERCENT;
+
+const payload = {
+  txjson: {
+    TransactionType: "Payment",
+    Destination: creatorWallet,
+    Amount: String(creatorAmount * 1_000_000)
+  },
+  options: {
+    submit: true,
+    return_url: {
+      web: "https://centerforcreators.com/nft-marketplace",
+      app: "https://centerforcreators.com/nft-marketplace"
+    }
+  },
+  custom_meta: {
+    blob: {
+      nft_id: id,
+      platform_fee_drops: String(platformAmount * 1_000_000),
+      platform_wallet: process.env.PAY_DESTINATION
+    }
+  }
+};
 
     const r = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
@@ -216,26 +225,36 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ error: "Invalid RLUSD price" });
     }
+const creatorWallet = nft.rows[0].creator_wallet;
 
-    const payload = {
-      txjson: {
-        TransactionType: "Payment",
-        Destination: process.env.PAY_DESTINATION,
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: process.env.PAY_DESTINATION,
-          value: String(amount)
-        }
-      },
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
-      },
-      custom_meta: { blob: { nft_id: id } }
-    };
+const creatorAmount = amount * CREATOR_PERCENT;
+const platformAmount = amount * PLATFORM_FEE_PERCENT;
+
+const payload = {
+  txjson: {
+    TransactionType: "Payment",
+    Destination: creatorWallet,
+    Amount: {
+      currency: "524C555344000000000000000000000000000000",
+      issuer: process.env.PAY_DESTINATION,
+      value: String(creatorAmount)
+    }
+  },
+  options: {
+    submit: true,
+    return_url: {
+      web: "https://centerforcreators.com/nft-marketplace",
+      app: "https://centerforcreators.com/nft-marketplace"
+    }
+  },
+  custom_meta: {
+    blob: {
+      nft_id: id,
+      platform_fee_rlusd: String(platformAmount),
+      platform_wallet: process.env.PAY_DESTINATION
+    }
+  }
+};
 
     const r = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
