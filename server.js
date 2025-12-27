@@ -329,6 +329,38 @@ app.post("/api/xaman/webhook", async (req, res) => {
       await client.query("ROLLBACK");
       return res.json({ ok: true });
     }
+// ---- STEP 4: PAY PLATFORM FEE ----
+const fee =
+  currency === "RLUSD"
+    ? parseFloat(p.custom_meta.blob.platform_fee_rlusd || 0)
+    : parseFloat(p.custom_meta.blob.platform_fee_drops || 0) / 1_000_000;
+
+if (fee > 0) {
+  await axios.post(
+    "https://xumm.app/api/v1/platform/payload",
+    {
+      txjson: {
+        TransactionType: "Payment",
+        Destination: process.env.PAY_DESTINATION,
+        Amount:
+          currency === "RLUSD"
+            ? {
+                currency: "524C555344000000000000000000000000000000",
+                issuer: process.env.PAY_DESTINATION,
+                value: String(fee)
+              }
+            : String(Math.floor(fee * 1_000_000))
+      },
+      options: { submit: true }
+    },
+    {
+      headers: {
+        "X-API-Key": process.env.XUMM_API_KEY,
+        "X-API-Secret": process.env.XUMM_API_SECRET
+      }
+    }
+  );
+}
 
     await client.query(
       "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
