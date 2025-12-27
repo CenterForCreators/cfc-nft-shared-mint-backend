@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import axios from "axios";
 
 dotenv.config();
+const PLATFORM_FEE_PERCENT = 0.05;
+const CREATOR_PERCENT = 0.95;
 
 const { Pool } = pg;
 
