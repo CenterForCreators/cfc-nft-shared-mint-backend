@@ -27,6 +27,7 @@ async function initDB() {
       submission_id INTEGER,
       name TEXT,
       description TEXT,
+      category TEXT,
       image_cid TEXT,
       metadata_cid TEXT,
       price_xrp TEXT,
