@@ -124,15 +124,16 @@ app.get("/api/market/all", async (_, res) => {
       return res.json(marketAllCache.data);
     }
 
-    const r = await pool.query(`
-      SELECT *,
-        GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
-        (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
-      FROM marketplace_nfts
-      WHERE minted=true AND sold=false
-      ORDER BY id DESC
-    `);
-
+const r = await pool.query(`
+  SELECT *,
+    GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
+    (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
+  FROM marketplace_nfts
+  WHERE minted = true
+    AND sold = false
+    AND COALESCE(is_delisted, false) = false
+  ORDER BY id DESC
+`);
     marketAllCache = { ts: now, data: r.rows };
     res.json(r.rows);
   } catch (e) {
