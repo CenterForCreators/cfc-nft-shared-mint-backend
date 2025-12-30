@@ -42,6 +42,10 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+  await pool.query(`
+    ALTER TABLE marketplace_nfts
+    ADD COLUMN IF NOT EXISTS is_delisted BOOLEAN DEFAULT false;
+  `);
 }
 
 async function initOrdersDB() {
@@ -131,7 +135,6 @@ const r = await pool.query(`
   FROM marketplace_nfts
   WHERE minted = true
     AND sold = false
-    AND COALESCE(is_delisted, false) = false
   ORDER BY id DESC
 `);
     marketAllCache = { ts: now, data: r.rows };
