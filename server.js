@@ -135,8 +135,10 @@ const r = await pool.query(`
   FROM marketplace_nfts
   WHERE minted = true
     AND sold = false
+    AND COALESCE(is_delisted, false) = false
   ORDER BY id DESC
 `);
+
     marketAllCache = { ts: now, data: r.rows };
     res.json(r.rows);
   } catch (e) {
@@ -403,6 +405,28 @@ app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
   );
 
   res.json(r.rows);
+});
+app.post("/api/market/toggle-delist", async (req, res) => {
+  try {
+    const { submission_id, delist } = req.body;
+
+    if (!Number.isFinite(Number(submission_id))) {
+      return res.status(400).json({ error: "Invalid submission_id" });
+    }
+
+    await pool.query(
+      "UPDATE marketplace_nfts SET is_delisted=$1 WHERE submission_id=$2",
+      [!!delist, Number(submission_id)]
+    );
+
+    // clear cache so it reflects instantly
+    marketAllCache = { ts: 0, data: null };
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Toggle delist failed" });
+  }
 });
 
 // ------------------------------
