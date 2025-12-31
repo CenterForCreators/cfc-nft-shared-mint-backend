@@ -115,6 +115,62 @@ app.use(cors());
 app.get("/", (_, res) => {
   res.send("CFC Marketplace backend running");
 });
+// ------------------------------
+// ADD NFT FROM CREATOR (AFTER MINT)
+// ------------------------------
+app.post("/api/add-nft", async (req, res) => {
+  try {
+    const {
+      submission_id,
+      name,
+      description,
+      category,
+      image_cid,
+      metadata_cid,
+      price_xrp,
+      price_rlusd,
+      creator_wallet,
+      terms,
+      website,
+      quantity
+    } = req.body;
+
+    if (!submission_id || !name || !image_cid || !metadata_cid || !creator_wallet) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    await pool.query(
+      `
+      INSERT INTO marketplace_nfts
+      (submission_id, name, description, category, image_cid, metadata_cid,
+       price_xrp, price_rlusd, creator_wallet, terms, website, quantity)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `,
+      [
+        submission_id,
+        name,
+        description || "",
+        category || "all",
+        image_cid,
+        metadata_cid,
+        price_xrp || null,
+        price_rlusd || null,
+        creator_wallet,
+        terms || "",
+        website || "",
+        quantity || 1
+      ]
+    );
+
+    // clear cache so it appears immediately
+    marketAllCache = { ts: 0, data: null };
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("add-nft error:", e);
+    res.status(500).json({ error: "Failed to add NFT to marketplace" });
+  }
+});
 
 // ------------------------------
 // GET ALL NFTs (CACHED — STEP 8A)
