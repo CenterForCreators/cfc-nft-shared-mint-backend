@@ -447,20 +447,19 @@ if (fee > 0) {
 // GET ORDERS BY WALLET
 // ------------------------------
 app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
-  const { wallet } = req.params;
+const r = await pool.query(
+  `
+  SELECT o.*, n.name, n.image_cid, n.metadata_cid, n.submission_id
+  FROM orders o
+  JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
+  WHERE o.buyer_wallet = $1
+  ORDER BY o.created_at DESC
+  `,
+  [wallet]
+);
 
-  const r = await pool.query(
-    `
-    SELECT o.*, n.name, n.image_cid
-    FROM orders o
-    JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
-    WHERE o.buyer_wallet = $1
-    ORDER BY o.created_at DESC
-    `,
-    [wallet]
-  );
+res.json(r.rows);
 
-  res.json(r.rows);
 });
 app.post("/api/market/toggle-delist", async (req, res) => {
   try {
