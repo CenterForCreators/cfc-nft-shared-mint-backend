@@ -192,7 +192,7 @@ const r = await pool.query(`
   WHERE minted = true
     AND sold = false
     AND COALESCE(is_delisted, false) = false
-  ORDER BY id DESC
+ ORDER BY created_at DESC
 `);
 
     marketAllCache = { ts: now, data: r.rows };
