@@ -143,8 +143,8 @@ app.post("/api/add-nft", async (req, res) => {
       `
       INSERT INTO marketplace_nfts
       (submission_id, name, description, category, image_cid, metadata_cid,
-       price_xrp, price_rlusd, creator_wallet, terms, website, quantity)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,minted)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
       `,
       [
         submission_id,
