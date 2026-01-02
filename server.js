@@ -394,6 +394,74 @@ app.post("/api/xaman/webhook", async (req, res) => {
       `,
       [nftId, buyerWallet, price, currency, payloadUUID, txHash]
     );
+// ------------------------------
+// NFT TRANSFER TO BUYER (REQUIRED)
+// ------------------------------
+const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
+await xrplClient.connect();
+
+// creator wallet (the minter)
+const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
+
+// find minted NFT by metadata CID
+const nfts = await xrplClient.request({
+  command: "account_nfts",
+  account: creatorWallet.classicAddress
+});
+
+const nftToken = nfts.result.account_nfts.find(
+  t => t.URI === xrpl.convertStringToHex(`ipfs://${nft.metadata_cid}`)
+);
+
+if (!nftToken) {
+  throw new Error("NFT not found for transfer");
+}
+
+// create sell offer
+const sellOfferTx = {
+  TransactionType: "NFTokenCreateOffer",
+  Account: creatorWallet.classicAddress,
+  NFTokenID: nftToken.NFTokenID,
+  Amount: "0",
+  Destination: buyerWallet,
+  Flags: 1
+};
+
+const preparedSell = await xrplClient.autofill(sellOfferTx);
+const signedSell = creatorWallet.sign(preparedSell);
+const sellResult = await xrplClient.submitAndWait(signedSell.tx_blob);
+
+const offerIndex =
+  sellResult.result.meta.AffectedNodes.find(n =>
+    n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+  )?.CreatedNode?.LedgerIndex;
+
+if (!offerIndex) {
+  throw new Error("Sell offer not created");
+}
+
+// accept sell offer (transfer NFT)
+const acceptTx = {
+  TransactionType: "NFTokenAcceptOffer",
+  Account: buyerWallet,
+  NFTokenSellOffer: offerIndex
+};
+
+await axios.post(
+  "https://xumm.app/api/v1/platform/payload",
+  {
+    txjson: acceptTx,
+    options: { submit: true }
+  },
+  {
+    headers: {
+      "X-API-Key": process.env.XUMM_API_KEY,
+      "X-API-Secret": process.env.XUMM_API_SECRET
+    }
+  }
+);
+
+await xrplClient.disconnect();
 
     if (inserted.rowCount === 0) {
       await client.query("ROLLBACK");
