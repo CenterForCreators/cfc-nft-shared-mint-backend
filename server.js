@@ -115,6 +115,11 @@ app.use(cors());
 app.get("/", (_, res) => {
   res.send("CFC Marketplace backend running");
 });
+// ✅ WEBHOOK HEALTH CHECK (ADD-ONLY)
+app.get("/api/xaman/webhook", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
 // ------------------------------
