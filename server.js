@@ -233,7 +233,7 @@ const payload = {
   txjson: {
     TransactionType: "Payment",
     Destination: creatorWallet,
-    Amount: String(creatorAmount * 1_000_000)
+    Amount: String(Math.floor(creatorAmount * 1_000_000))
   },
   options: {
     submit: true,
