@@ -478,6 +478,22 @@ app.post("/api/xaman/webhook", async (req, res) => {
       await client.query("ROLLBACK");
       return res.json({ ok: true });
       }
+    await client.query(
+      "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
+      [nftId]
+    );
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(500).json({ error: "webhook failed" });
+  } finally {
+    client.release();
+  }
+});
 
 // ------------------------------
 // GET ORDERS BY WALLET
