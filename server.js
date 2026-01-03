@@ -596,6 +596,32 @@ app.get("/api/admin/backfill-sell-offers", async (req, res) => {
     res.status(500).json({ error: "Backfill failed" });
   }
 });
+// ------------------------------
+// ADMIN — BACKFILL SELL OFFERS (ONE TIME)
+// ------------------------------
+app.post("/api/admin/backfill-sell-offers", async (req, res) => {
+  try {
+    if (req.query.key !== process.env.ADMIN_KEY) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const r = await pool.query(
+      "SELECT id FROM marketplace_nfts WHERE sell_offer_index IS NULL"
+    );
+
+    for (const row of r.rows) {
+      await axios.post(
+        "http://localhost:" + (process.env.PORT || 5000) + "/api/admin/create-sell-offer",
+        { id: row.id }
+      );
+    }
+
+    res.json({ ok: true, count: r.rows.length });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Backfill failed" });
+  }
+});
 
 // ------------------------------
 const PORT = process.env.PORT || 5000;
