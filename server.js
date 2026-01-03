@@ -396,9 +396,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
       account: creatorWallet.classicAddress
     });
 
-    const nftToken = nfts.result.account_nfts.find(
-      n => n.URI === xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`)
-    );
+   const nftToken = nfts.result.account_nfts.find(n => {
+  if (n.Burned) return false;
+  const uriText = xrpl.convertHexToString(n.URI || "");
+  return uriText.includes(r.rows[0].metadata_cid);  // match CID anywhere in URI
+});
+
     if (!nftToken) throw new Error("NFT not found");
 
     const sellTx = {
