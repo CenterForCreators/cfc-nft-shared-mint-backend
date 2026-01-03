@@ -400,21 +400,23 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
   command: "account_nfts",
   account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k"
 });
-
-   const nftToken = nfts.result.account_nfts.find(n => {
+const nftToken = nfts.result.account_nfts.find(n => {
   if (n.Burned) return false;
   const uriText = xrpl.convertHexToString(n.URI || "");
- return uriText.replace("ipfs://", "").includes(r.rows[0].metadata_cid.replace("ipfs://", ""));
+  return uriText.replace("ipfs://", "").includes(
+    r.rows[0].metadata_cid.replace("ipfs://", "")
+  );
+});
 
-    if (!nftToken) throw new Error("NFT not found");
+if (!nftToken) throw new Error("NFT not found");
 
-    const sellTx = {
-      TransactionType: "NFTokenCreateOffer",
-      Account: signingWallet.classicAddress,
-     NFTokenID: nftToken.NFTokenID,
-      Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
-      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-    };
+const sellTx = {
+  TransactionType: "NFTokenCreateOffer",
+  Account: signingWallet.classicAddress,
+  NFTokenID: nftToken.NFTokenID,
+  Amount: "1",
+  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+};
 
   const result = await client.submitAndWait(sellTx, { wallet: signingWallet });  
 
