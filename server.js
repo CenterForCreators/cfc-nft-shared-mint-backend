@@ -159,9 +159,16 @@ app.post("/api/add-nft", async (req, res) => {
       account: creatorWallet.classicAddress
     });
 
-    const nftToken = nfts.result.account_nfts.find(
-  n => xrpl.convertHexToString(n.URI).endsWith(metadata_cid)
-);
+ const targetCid = String(r.rows[0].metadata_cid || "").trim();
+
+const nftToken = nfts.result.account_nfts.find(n => {
+  try {
+    const uriStr = xrpl.convertHexToString(n.URI || "").trim();
+    return uriStr.includes(targetCid); // works for ipfs://CID, CID, etc.
+  } catch {
+    return false;
+  }
+});
 
 if (!nftToken) {
   throw new Error("NFT not found in creator wallet");
