@@ -394,12 +394,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     const client = new xrpl.Client(process.env.XRPL_NETWORK);
     await client.connect();
 
-    const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
+   const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
 
-    const nfts = await client.request({
-      command: "account_nfts",
-      account: creatorWallet.classicAddress
-    });
+   const nfts = await client.request({
+  command: "account_nfts",
+  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k"
+});
 
    const nftToken = nfts.result.account_nfts.find(n => {
   if (n.Burned) return false;
@@ -410,7 +410,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
     const sellTx = {
       TransactionType: "NFTokenCreateOffer",
-      Account: creatorWallet.classicAddress,
+      Account: signingWallet.classicAddress,
      NFTokenID: nftToken.NFTokenID,
       Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
