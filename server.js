@@ -398,6 +398,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
     if (inserted.rowCount === 0) {
       await client.query("ROLLBACK");
       return res.json({ ok: true });
+      }
 // ------------------------------
 // NFT TRANSFER TO BUYER (FIXED)
 // ------------------------------
