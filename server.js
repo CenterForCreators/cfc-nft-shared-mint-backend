@@ -170,7 +170,7 @@ if (!nftToken) {
     const sellOfferTx = {
       TransactionType: "NFTokenCreateOffer",
       Account: creatorWallet.classicAddress,
-      NFTokenID: nftToken.NFTokenID,
+     NFTokenID: nft.nftoken_id,
       Amount: String(Math.floor(parsePrice(price_xrp || price_rlusd) * 1_000_000)),
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
@@ -397,7 +397,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     const sellTx = {
       TransactionType: "NFTokenCreateOffer",
       Account: creatorWallet.classicAddress,
-      NFTokenID: nftToken.NFTokenID,
+     NFTokenID: nft.nftoken_id,
       Amount: "0",
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
