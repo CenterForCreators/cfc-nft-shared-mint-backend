@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -367,21 +368,6 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     res.status(500).json({ error: "Buy failed" });
   }
 });
-// TEMP — ONE TIME SELL OFFER FIX
-(async () => {
-  const r = await pool.query(
-    "SELECT id FROM marketplace_nfts WHERE sell_offer_index IS NULL"
-  );
-for (const row of r.rows) {
-  await axios.post(
-  "https://cfc-marketplace-backend.onrender.com/api/admin/create-sell-offer",
-
-    { id: row.id }
-  );
-}
-
-console.log("Sell offers created for existing NFTs");
-})();
 
 // ------------------------------
 // XAMAN WEBHOOK (UNCHANGED)
