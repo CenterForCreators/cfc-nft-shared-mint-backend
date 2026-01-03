@@ -398,53 +398,55 @@ app.post("/api/xaman/webhook", async (req, res) => {
     if (inserted.rowCount === 0) {
       await client.query("ROLLBACK");
       return res.json({ ok: true });
-      // ------------------------------
-// NFT TRANSFER TO BUYER (REQUIRED)
 // ------------------------------
+// NFT TRANSFER TO BUYER (FIXED)
+// ------------------------------
+const xrpl = await import("xrpl");
+
 const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
 await xrplClient.connect();
 
-// creator wallet (the minter)
+// creator wallet (owns NFT)
 const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
 
-// find minted NFT by metadata CID
-const nfts = await xrplClient.request({
+// find NFT by metadata CID
+const nftResp = await xrplClient.request({
   command: "account_nfts",
   account: creatorWallet.classicAddress
 });
 
-const nftToken = nfts.result.account_nfts.find(
+const nftToken = nftResp.result.account_nfts.find(
   t => t.URI === xrpl.convertStringToHex(`ipfs://${nft.metadata_cid}`)
 );
 
-if (!nftToken) {
-  throw new Error("NFT not found for transfer");
-}
+if (!nftToken) throw new Error("NFT not found");
 
-// create sell offer
+// 1️⃣ CREATE SELL OFFER (no destination)
 const sellOfferTx = {
   TransactionType: "NFTokenCreateOffer",
   Account: creatorWallet.classicAddress,
   NFTokenID: nftToken.NFTokenID,
   Amount: "0",
-  Destination: buyerWallet,
-  Flags: 1
+  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
 };
 
-const preparedSell = await xrplClient.autofill(sellOfferTx);
-const signedSell = creatorWallet.sign(preparedSell);
-const sellResult = await xrplClient.submitAndWait(signedSell.tx_blob);
+const sellResult = await xrplClient.submitAndWait(
+  sellOfferTx,
+  { wallet: creatorWallet }
+);
 
-const offerIndex =
-  sellResult.result.meta.AffectedNodes.find(n =>
-    n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-  )?.CreatedNode?.LedgerIndex;
+// extract offer index
+const createdOfferNode =
+  sellResult.result.meta.AffectedNodes.find(
+    n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
+  );
 
-if (!offerIndex) {
-  throw new Error("Sell offer not created");
-}
+if (!createdOfferNode) throw new Error("Sell offer not created");
 
-// accept sell offer (transfer NFT)
+const offerIndex = createdOfferNode.CreatedNode.LedgerIndex;
+
+
+// 2️⃣ BUYER ACCEPTS SELL OFFER
 const acceptTx = {
   TransactionType: "NFTokenAcceptOffer",
   Account: buyerWallet,
@@ -466,6 +468,7 @@ await axios.post(
 );
 
 await xrplClient.disconnect();
+
     
 // ---- STEP 4: PAY PLATFORM FEE ----
 const fee =
