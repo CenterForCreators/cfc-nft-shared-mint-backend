@@ -416,7 +416,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
 
-    const result = await client.submitAndWait(sellTx, { wallet: creatorWallet });
+  const result = await client.submitAndWait(sellTx, { wallet: signingWallet });  
 
     const node = result.result.meta.AffectedNodes.find(
       n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
