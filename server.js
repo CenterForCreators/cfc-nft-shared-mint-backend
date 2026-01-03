@@ -160,13 +160,12 @@ app.post("/api/add-nft", async (req, res) => {
     });
 
     const nftToken = nfts.result.account_nfts.find(
-      n => n.URI === xrpl.convertStringToHex(`ipfs://${metadata_cid}`)
-    );
+  n => xrpl.convertHexToString(n.URI).endsWith(metadata_cid)
+);
 
-    if (!nftToken) {
-      await client.disconnect();
-      return res.status(400).json({ error: "Minted NFT not found" });
-    }
+if (!nftToken) {
+  throw new Error("NFT not found in creator wallet");
+}
 
     const sellOfferTx = {
       TransactionType: "NFTokenCreateOffer",
