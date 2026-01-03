@@ -568,21 +568,6 @@ app.post("/api/orders/redeem", async (req, res) => {
 
 // ------------------------------
 const PORT = process.env.PORT || 5000;
-(async () => {
-  const r = await pool.query(
-    "SELECT id FROM marketplace_nfts WHERE sell_offer_index IS NULL"
-  );
-
-  for (const row of r.rows) {
-    console.log("Creating sell offer for NFT ID:", row.id);
-    await axios.post(
-      "https://cfc-nft-shared-mint-backend.onrender.com/api/admin/create-sell-offer",
-      { id: row.id }
-    );
-  }
-
-  console.log("DONE creating sell offers");
-})();
 
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
