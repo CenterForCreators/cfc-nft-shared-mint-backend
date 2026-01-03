@@ -123,6 +123,7 @@ app.get("/api/xaman/webhook", (req, res) => {
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
 // ------------------------------
+
 app.post("/api/add-nft", async (req, res) => {
   try {
     const {
@@ -144,12 +145,60 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // XRPL — create sell offer (XPMarket style)
+    const xrpl = await import("xrpl");
+    const client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
+
+    const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
+
+    const nfts = await client.request({
+      command: "account_nfts",
+      account: creatorWallet.classicAddress
+    });
+
+    const nftToken = nfts.result.account_nfts.find(
+      n => n.URI === xrpl.convertStringToHex(`ipfs://${metadata_cid}`)
+    );
+
+    if (!nftToken) {
+      await client.disconnect();
+      return res.status(400).json({ error: "Minted NFT not found" });
+    }
+
+    const sellOfferTx = {
+      TransactionType: "NFTokenCreateOffer",
+      Account: creatorWallet.classicAddress,
+      NFTokenID: nftToken.NFTokenID,
+      Amount: String(Math.floor(parsePrice(price_xrp || price_rlusd) * 1_000_000)),
+      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+    };
+
+    const sellResult = await client.submitAndWait(
+      sellOfferTx,
+      { wallet: creatorWallet }
+    );
+
+    const createdNode = sellResult.result.meta.AffectedNodes.find(
+      n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
+    );
+
+    if (!createdNode) {
+      await client.disconnect();
+      return res.status(500).json({ error: "Sell offer failed" });
+    }
+
+    const sellOfferIndex = createdNode.CreatedNode.LedgerIndex;
+
+    await client.disconnect();
+
     await pool.query(
       `
       INSERT INTO marketplace_nfts
       (submission_id, name, description, category, image_cid, metadata_cid,
-       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,minted)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
+       minted, sell_offer_index)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
       `,
       [
         submission_id,
@@ -163,14 +212,14 @@ app.post("/api/add-nft", async (req, res) => {
         creator_wallet,
         terms || "",
         website || "",
-        quantity || 1
+        quantity || 1,
+        sellOfferIndex
       ]
     );
 
-    // clear cache so it appears immediately
     marketAllCache = { ts: 0, data: null };
-
     res.json({ ok: true });
+
   } catch (e) {
     console.error("add-nft error:", e);
     res.status(500).json({ error: "Failed to add NFT to marketplace" });
@@ -215,65 +264,54 @@ app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
 
-    const nft = await pool.query(
+    const r = await pool.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1",
       [id]
     );
 
-    if (!nft.rows.length) {
+    if (!r.rows.length) {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const amount = parsePrice(nft.rows[0].price_xrp);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: "Invalid XRP price" });
-    }
+    const nft = r.rows[0];
 
-   const creatorWallet = nft.rows[0].creator_wallet;
+    const payload = {
+      txjson: {
+        TransactionType: "NFTokenAcceptOffer",
+        NFTokenSellOffer: nft.sell_offer_index
+      },
+      options: {
+        submit: true,
+        return_url: {
+          web: "https://centerforcreators.com/nft-marketplace",
+          app: "https://centerforcreators.com/nft-marketplace"
+        }
+      },
+      custom_meta: {
+        blob: {
+          nft_id: id
+        }
+      }
+    };
 
-const creatorAmount = amount * CREATOR_PERCENT;
-const platformAmount = amount * PLATFORM_FEE_PERCENT;
-
-const payload = {
-  txjson: {
-    TransactionType: "Payment",
-    Destination: creatorWallet,
-    Amount: String(Math.floor(creatorAmount * 1_000_000))
-  },
-  options: {
-    submit: true,
-    return_url: {
-      web: "https://centerforcreators.com/nft-marketplace",
-      app: "https://centerforcreators.com/nft-marketplace"
-    }
-  },
-  custom_meta: {
-    blob: {
-      nft_id: id,
-      platform_fee_drops: String(platformAmount * 1_000_000),
-      platform_wallet: process.env.PAY_DESTINATION
-    }
-  }
-};
-
-    const r = await axios.post(
+    const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
       payload,
       {
         headers: {
           "X-API-Key": process.env.XUMM_API_KEY,
-          "X-API-Secret": process.env.XUMM_API_SECRET,
-          "Content-Type": "application/json"
+          "X-API-Secret": process.env.XUMM_API_SECRET
         }
       }
     );
 
-    res.json({ link: r.data.next.always });
-  } catch (err) {
-    console.error("PAY XRP error:", err);
-    res.status(500).json({ error: "Failed to create payment" });
+    res.json({ link: xumm.data.next.always });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Buy failed" });
   }
 });
+
 
 // ------------------------------
 // PAY RLUSD (WORKING)
@@ -282,68 +320,54 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
   try {
     const { id } = req.body;
 
-    const nft = await pool.query(
+    const r = await pool.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1",
       [id]
     );
 
-    if (!nft.rows.length) {
+    if (!r.rows.length) {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const amount = parsePrice(nft.rows[0].price_rlusd);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: "Invalid RLUSD price" });
-    }
-const creatorWallet = nft.rows[0].creator_wallet;
+    const nft = r.rows[0];
 
-const creatorAmount = amount * CREATOR_PERCENT;
-const platformAmount = amount * PLATFORM_FEE_PERCENT;
+    const payload = {
+      txjson: {
+        TransactionType: "NFTokenAcceptOffer",
+        NFTokenSellOffer: nft.sell_offer_index
+      },
+      options: {
+        submit: true,
+        return_url: {
+          web: "https://centerforcreators.com/nft-marketplace",
+          app: "https://centerforcreators.com/nft-marketplace"
+        }
+      },
+      custom_meta: {
+        blob: {
+          nft_id: id
+        }
+      }
+    };
 
-const payload = {
-  txjson: {
-    TransactionType: "Payment",
-    Destination: creatorWallet,
-    Amount: {
-      currency: "524C555344000000000000000000000000000000",
-      issuer: process.env.PAY_DESTINATION,
-      value: String(creatorAmount)
-    }
-  },
-  options: {
-    submit: true,
-    return_url: {
-      web: "https://centerforcreators.com/nft-marketplace",
-      app: "https://centerforcreators.com/nft-marketplace"
-    }
-  },
-  custom_meta: {
-    blob: {
-      nft_id: id,
-      platform_fee_rlusd: String(platformAmount),
-      platform_wallet: process.env.PAY_DESTINATION
-    }
-  }
-};
-
-    const r = await axios.post(
+    const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
       payload,
       {
         headers: {
           "X-API-Key": process.env.XUMM_API_KEY,
-          "X-API-Secret": process.env.XUMM_API_SECRET,
-          "Content-Type": "application/json"
+          "X-API-Secret": process.env.XUMM_API_SECRET
         }
       }
     );
 
-    res.json({ link: r.data.next.always });
-  } catch (err) {
-    console.error("PAY RLUSD error:", err);
-    res.status(500).json({ error: "Failed to create payment" });
+    res.json({ link: xumm.data.next.always });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Buy failed" });
   }
 });
+
 
 // ------------------------------
 // XAMAN WEBHOOK (UNCHANGED)
@@ -399,127 +423,6 @@ app.post("/api/xaman/webhook", async (req, res) => {
       await client.query("ROLLBACK");
       return res.json({ ok: true });
       }
-// ------------------------------
-// NFT TRANSFER TO BUYER (FIXED)
-// ------------------------------
-const xrpl = await import("xrpl");
-
-const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
-await xrplClient.connect();
-
-// creator wallet (owns NFT)
-const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
-
-// find NFT by metadata CID
-const nftResp = await xrplClient.request({
-  command: "account_nfts",
-  account: creatorWallet.classicAddress
-});
-
-const nftToken = nftResp.result.account_nfts.find(
-  t => t.URI === xrpl.convertStringToHex(`ipfs://${nft.metadata_cid}`)
-);
-
-if (!nftToken) throw new Error("NFT not found");
-
-// 1️⃣ CREATE SELL OFFER (no destination)
-const sellOfferTx = {
-  TransactionType: "NFTokenCreateOffer",
-  Account: creatorWallet.classicAddress,
-  NFTokenID: nftToken.NFTokenID,
-  Amount: "0",
-  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-};
-
-const sellResult = await xrplClient.submitAndWait(
-  sellOfferTx,
-  { wallet: creatorWallet }
-);
-
-// extract offer index
-const createdOfferNode =
-  sellResult.result.meta.AffectedNodes.find(
-    n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
-  );
-
-if (!createdOfferNode) throw new Error("Sell offer not created");
-
-const offerIndex = createdOfferNode.CreatedNode.LedgerIndex;
-
-
-// 2️⃣ BUYER ACCEPTS SELL OFFER
-const acceptTx = {
-  TransactionType: "NFTokenAcceptOffer",
-  Account: buyerWallet,
-  NFTokenSellOffer: offerIndex
-};
-
-await axios.post(
-  "https://xumm.app/api/v1/platform/payload",
-  {
-    txjson: acceptTx,
-    options: { submit: true }
-  },
-  {
-    headers: {
-      "X-API-Key": process.env.XUMM_API_KEY,
-      "X-API-Secret": process.env.XUMM_API_SECRET
-    }
-  }
-);
-
-await xrplClient.disconnect();
-
-    
-// ---- STEP 4: PAY PLATFORM FEE ----
-const fee =
-  currency === "RLUSD"
-    ? parseFloat(p.custom_meta.blob.platform_fee_rlusd || 0)
-    : parseFloat(p.custom_meta.blob.platform_fee_drops || 0) / 1_000_000;
-
-if (fee > 0) {
-  await axios.post(
-    "https://xumm.app/api/v1/platform/payload",
-    {
-      txjson: {
-        TransactionType: "Payment",
-        Destination: process.env.PAY_DESTINATION,
-        Amount:
-          currency === "RLUSD"
-            ? {
-                currency: "524C555344000000000000000000000000000000",
-                issuer: process.env.PAY_DESTINATION,
-                value: String(fee)
-              }
-            : String(Math.floor(fee * 1_000_000))
-      },
-      options: { submit: true }
-    },
-    {
-      headers: {
-        "X-API-Key": process.env.XUMM_API_KEY,
-        "X-API-Secret": process.env.XUMM_API_SECRET
-      }
-    }
-  );
-}
-    await client.query(
-      "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
-      [nftId]
-    );
-
-    await client.query("COMMIT");
-res.json({ ok: true });
-
-} catch (e) {
-  await client.query("ROLLBACK");
-  console.error(e);
-  res.status(500).json({ error: "webhook failed" });
-
-} finally {
-  client.release();
-}
-});
 
 // ------------------------------
 // GET ORDERS BY WALLET
