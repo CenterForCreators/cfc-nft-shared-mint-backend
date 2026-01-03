@@ -154,31 +154,31 @@ app.post("/api/add-nft", async (req, res) => {
 
     const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
 
-    const nfts = await client.request({
-      command: "account_nfts",
-      account: creatorWallet.classicAddress
-    });
+   const nfts = await client.request({
+  command: "account_nfts",
+  account: creatorWallet.classicAddress
+});
 
- const targetCid = String(r.rows[0].metadata_cid || "").trim();
+const targetCid = String(metadata_cid || "").trim();
 
 const nftToken = nfts.result.account_nfts.find(n => {
   try {
     const uriStr = xrpl.convertHexToString(n.URI || "").trim();
-    return uriStr.includes(targetCid); // works for ipfs://CID, CID, etc.
+    return uriStr.includes(targetCid);
   } catch {
     return false;
   }
 });
 
 if (!nftToken) {
-  throw new Error("NFT not found in creator wallet");
+  await client.disconnect();
+  return res.status(500).json({ error: "NFT not found in creator wallet" });
 }
 
-    const sellOfferTx = {
       TransactionType: "NFTokenCreateOffer",
       Account: creatorWallet.classicAddress,
-     NFTokenID: nft.nftoken_id,
-      Amount: String(Math.floor(parsePrice(price_xrp || price_rlusd) * 1_000_000)),
+     NFTokenID: nftToken.NFTokenID,
+      Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
 
@@ -407,7 +407,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     const sellTx = {
       TransactionType: "NFTokenCreateOffer",
       Account: creatorWallet.classicAddress,
-     NFTokenID: nft.nftoken_id,
+     NFTokenID: nftToken.NFTokenID,
       Amount: "0",
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
