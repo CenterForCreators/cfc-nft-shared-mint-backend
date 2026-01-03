@@ -565,6 +565,37 @@ app.post("/api/orders/redeem", async (req, res) => {
   res.json({ ok: true });
 
 });
+app.get("/api/admin/backfill-sell-offers", async (req, res) => {
+  try {
+    // simple safety key so random people can’t trigger it
+    if (req.query.key !== process.env.ADMIN_KEY) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const r = await pool.query(
+      "SELECT id FROM marketplace_nfts WHERE sell_offer_index IS NULL ORDER BY id ASC"
+    );
+
+    const results = [];
+    for (const row of r.rows) {
+      try {
+        // call your OWN route internally (no CORS)
+        const resp = await axios.post(
+          `http://127.0.0.1:${process.env.PORT || 5000}/api/admin/create-sell-offer`,
+          { id: row.id }
+        );
+        results.push({ id: row.id, ok: true, sell_offer_index: resp.data.sell_offer_index });
+      } catch (e) {
+        results.push({ id: row.id, ok: false, error: e?.response?.data || e.message });
+      }
+    }
+
+    res.json({ count: r.rows.length, results });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Backfill failed" });
+  }
+});
 
 // ------------------------------
 const PORT = process.env.PORT || 5000;
