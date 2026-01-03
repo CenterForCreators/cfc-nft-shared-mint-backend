@@ -178,10 +178,15 @@ const sellOfferTx = {
   TransactionType: "NFTokenCreateOffer",
   Account: creatorWallet.classicAddress,
   NFTokenID: nftToken.NFTokenID,
-  Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
+  Amount: price_rlusd
+    ? {
+        currency: "RLUSD",
+        issuer: process.env.RLUSD_ISSUER,
+        value: String(parsePrice(price_rlusd))
+      }
+    : String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
   Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-};   
-
+};
     const sellResult = await client.submitAndWait(
       sellOfferTx,
       { wallet: creatorWallet }
