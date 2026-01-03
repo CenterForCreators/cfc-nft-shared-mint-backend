@@ -394,7 +394,11 @@ app.post("/api/xaman/webhook", async (req, res) => {
       `,
       [nftId, buyerWallet, price, currency, payloadUUID, txHash]
     );
-// ------------------------------
+
+    if (inserted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
+      // ------------------------------
 // NFT TRANSFER TO BUYER (REQUIRED)
 // ------------------------------
 const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
@@ -462,11 +466,7 @@ await axios.post(
 );
 
 await xrplClient.disconnect();
-
-    if (inserted.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.json({ ok: true });
-    }
+    
 // ---- STEP 4: PAY PLATFORM FEE ----
 const fee =
   currency === "RLUSD"
