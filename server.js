@@ -374,8 +374,8 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
   );
 for (const row of r.rows) {
   await axios.post(
-    "https://cfc-marketplace-backend.onrender.com/api/admin/create-sell-offer
-",
+  "https://cfc-marketplace-backend.onrender.com/api/admin/create-sell-offer",
+
     { id: row.id }
   );
 }
