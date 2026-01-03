@@ -404,8 +404,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
    const nftToken = nfts.result.account_nfts.find(n => {
   if (n.Burned) return false;
   const uriText = xrpl.convertHexToString(n.URI || "");
-  return uriText.includes(r.rows[0].metadata_cid);  // match CID anywhere in URI
-});
+ return uriText.replace("ipfs://", "").includes(r.rows[0].metadata_cid.replace("ipfs://", ""));
 
     if (!nftToken) throw new Error("NFT not found");
 
