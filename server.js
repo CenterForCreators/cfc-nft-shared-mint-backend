@@ -174,13 +174,13 @@ if (!nftToken) {
   await client.disconnect();
   return res.status(500).json({ error: "NFT not found in creator wallet" });
 }
-
-      TransactionType: "NFTokenCreateOffer",
-      Account: creatorWallet.classicAddress,
-     NFTokenID: nftToken.NFTokenID,
-      Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
-      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-    };
+const sellOfferTx = {
+  TransactionType: "NFTokenCreateOffer",
+  Account: creatorWallet.classicAddress,
+  NFTokenID: nftToken.NFTokenID,
+  Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
+  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+};   
 
     const sellResult = await client.submitAndWait(
       sellOfferTx,
