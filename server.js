@@ -408,7 +408,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
       TransactionType: "NFTokenCreateOffer",
       Account: creatorWallet.classicAddress,
      NFTokenID: nftToken.NFTokenID,
-      Amount: "0",
+      Amount: String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
       Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
     };
 
