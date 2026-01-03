@@ -503,7 +503,6 @@ if (fee > 0) {
     }
   );
 }
-try {
     await client.query(
       "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
       [nftId]
