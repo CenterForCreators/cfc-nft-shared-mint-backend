@@ -510,14 +510,16 @@ try {
     );
 
     await client.query("COMMIT");
-    res.json({ ok: true });
-  } catch (e) {
-    await client.query("ROLLBACK");
-    console.error(e);
-    res.status(500).json({ error: "webhook failed" });
-  } finally {
-    client.release();
-  }
+res.json({ ok: true });
+
+} catch (e) {
+  await client.query("ROLLBACK");
+  console.error(e);
+  res.status(500).json({ error: "webhook failed" });
+
+} finally {
+  client.release();
+}
 });
 
 // ------------------------------
