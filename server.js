@@ -418,7 +418,9 @@ const sellTx = {
   Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
 };
 
-  const result = await client.submitAndWait(sellTx, { wallet: signingWallet });  
+  const result = await client.submitAndWait(sellTx, { wallet: signingWallet });
+
+console.log("SELL OFFER RESULT:", JSON.stringify(result.result, null, 2));
 
     const node = result.result.meta.AffectedNodes.find(
       n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
