@@ -398,7 +398,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
 
    const nfts = await client.request({
   command: "account_nfts",
-  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k"
+  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k",
 });
 const nftToken = nfts.result.account_nfts.find(n => {
   if (n.Burned) return false;
