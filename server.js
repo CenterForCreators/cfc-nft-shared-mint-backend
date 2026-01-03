@@ -367,6 +367,61 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     res.status(500).json({ error: "Buy failed" });
   }
 });
+app.post("/api/admin/create-sell-offer", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    const r = await pool.query(
+      "SELECT id, metadata_cid FROM marketplace_nfts WHERE id=$1",
+      [id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+
+    const xrpl = await import("xrpl");
+    const client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
+
+    const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
+
+    const nfts = await client.request({
+      command: "account_nfts",
+      account: creatorWallet.classicAddress
+    });
+
+    const nftToken = nfts.result.account_nfts.find(
+      n => n.URI === xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`)
+    );
+    if (!nftToken) throw new Error("NFT not found");
+
+    const sellTx = {
+      TransactionType: "NFTokenCreateOffer",
+      Account: creatorWallet.classicAddress,
+      NFTokenID: nftToken.NFTokenID,
+      Amount: "0",
+      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+    };
+
+    const result = await client.submitAndWait(sellTx, { wallet: creatorWallet });
+
+    const node = result.result.meta.AffectedNodes.find(
+      n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
+    );
+    if (!node) throw new Error("Sell offer failed");
+
+    const sellOfferIndex = node.CreatedNode.LedgerIndex;
+
+    await pool.query(
+      "UPDATE marketplace_nfts SET sell_offer_index=$1 WHERE id=$2",
+      [sellOfferIndex, id]
+    );
+
+    await client.disconnect();
+    res.json({ ok: true, sell_offer_index: sellOfferIndex });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed" });
+  }
+});
 
 
 // ------------------------------
