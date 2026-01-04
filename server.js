@@ -211,6 +211,35 @@ app.post("/api/add-nft", async (req, res) => {
   }
 });
 
+// ------------------------------
+// GET ALL NFTs (CACHED — STEP 8A)
+// ------------------------------
+app.get("/api/market/all", async (_, res) => {
+  try {
+    const now = Date.now();
+
+    if (marketAllCache.data && (now - marketAllCache.ts) < MARKET_ALL_TTL_MS) {
+      return res.json(marketAllCache.data);
+    }
+
+    const r = await pool.query(`
+      SELECT *,
+        GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
+        (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
+      FROM marketplace_nfts
+      WHERE minted = true
+        AND sold = false
+        AND COALESCE(is_delisted, false) = false
+      ORDER BY created_at DESC
+    `);
+
+    marketAllCache = { ts: now, data: r.rows };
+    res.json(r.rows);
+  } catch (e) {
+    console.error("market/all error:", e);
+    res.status(500).json({ error: "Failed to load market" });
+  }
+});
 
 // ------------------------------
 // PAY XRP (WORKING)
