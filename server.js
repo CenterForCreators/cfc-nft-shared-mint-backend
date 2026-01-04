@@ -128,94 +128,89 @@ app.get("/api/xaman/webhook", (req, res) => {
 
 app.post("/api/add-nft", async (req, res) => {
   try {
-    const {
-      submission_id,
-      name,
-      description,
-      category,
-      image_cid,
-      metadata_cid,
-      price_xrp,
-      price_rlusd,
-      creator_wallet,
-      terms,
-      website,
-      quantity
-    } = req.body;
+    const { submission_id } = req.body;
 
-    if (!submission_id || !name || !image_cid || !metadata_cid || !creator_wallet) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!submission_id) {
+      return res.status(400).json({ error: "submission_id required" });
     }
 
+    // 1️⃣ Fetch submission details
+    const subRes = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        description,
+        category,
+        image_cid,
+        metadata_cid,
+        price_xrp,
+        price_rlusd,
+        creator_wallet,
+        terms,
+        website,
+        quantity
+      FROM submissions
+      WHERE id = $1
+      `,
+      [submission_id]
+    );
+
+    if (!subRes.rows.length) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    const s = subRes.rows[0];
+
+    // 2️⃣ Insert into marketplace
     await pool.query(
       `
       INSERT INTO marketplace_nfts
-      (submission_id, name, description, category, image_cid, metadata_cid,
-       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
-       minted)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
-      `,
-      [
+      (
         submission_id,
         name,
-        description || "",
-        category || "all",
+        description,
+        category,
         image_cid,
         metadata_cid,
-        price_xrp || null,
-        price_rlusd || null,
+        price_xrp,
+        price_rlusd,
         creator_wallet,
-        terms || "",
-        website || "",
-        quantity || 1
+        terms,
+        website,
+        quantity,
+        minted
+      )
+      VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+      `,
+      [
+        s.id,
+        s.name,
+        s.description || "",
+        s.category || "all",
+        s.image_cid,
+        s.metadata_cid,
+        s.price_xrp || null,
+        s.price_rlusd || null,
+        s.creator_wallet,
+        s.terms || "",
+        s.website || "",
+        s.quantity || 1
       ]
     );
 
+    // 3️⃣ Clear cache so it appears instantly
     marketAllCache = { ts: 0, data: null };
+
     res.json({ ok: true });
 
-
-// clear cache so NFT appears immediately
-marketAllCache = { ts: 0, data: null };
-
-res.json({ ok: true });
-
-} catch (e) {
-  console.error("add-nft error:", e);
-  res.status(500).json({ error: "Failed to add NFT to marketplace" });
-}
-});
-
-// ------------------------------
-// GET ALL NFTs (CACHED — STEP 8A)
-// ------------------------------
-app.get("/api/market/all", async (_, res) => {
-  try {
-    const now = Date.now();
-
-    // Serve cached response if still fresh
-    if (marketAllCache.data && (now - marketAllCache.ts) < MARKET_ALL_TTL_MS) {
-      return res.json(marketAllCache.data);
-    }
-
-const r = await pool.query(`
-  SELECT *,
-    GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
-    (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
-  FROM marketplace_nfts
-  WHERE minted = true
-    AND sold = false
-    AND COALESCE(is_delisted, false) = false
- ORDER BY created_at DESC
-`);
-
-    marketAllCache = { ts: now, data: r.rows };
-    res.json(r.rows);
   } catch (e) {
-    console.error("market/all error:", e);
-    res.status(500).json({ error: "Failed to load market" });
+    console.error("add-nft error:", e);
+    res.status(500).json({ error: "Failed to list NFT" });
   }
 });
+
 
 // ------------------------------
 // PAY XRP (WORKING)
@@ -412,8 +407,6 @@ if (nftPrice.price_rlusd) {
 
   if (!rlusdNode) throw new Error("RLUSD sell offer failed");
 }
-
-  const result = await client.submitAndWait(sellTx, { wallet: signingWallet });
 
 console.log("SELL OFFER RESULT:", JSON.stringify(result.result, null, 2));
 
