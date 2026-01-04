@@ -423,38 +423,98 @@ await pool.query(
 });
 
 // ---- CREATE RLUSD SELL OFFER (if price exists) ----
-if (nftPrice.price_rlusd) {
-  const rlusdSellTx = {
-    TransactionType: "NFTokenCreateOffer",
-    Account: signingWallet.classicAddress,
-    NFTokenID: nftToken.NFTokenID,
-    Amount: {
-      currency: "RLUSD",
-      issuer: process.env.RLUSD_ISSUER,
-      value: String(parsePrice(nftPrice.price_rlusd))
-    },
-    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-  };
 
-  const rlusdResult = await client.submitAndWait(rlusdSellTx, { wallet: signingWallet });
+app.post("/api/admin/create-sell-offer", async (req, res) => {
+  let client;
 
-  const rlusdNode = rlusdResult.result.meta.AffectedNodes.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-  );
+  try {
+    const { id } = req.body;
 
-  if (!rlusdNode) throw new Error("RLUSD sell offer failed");
+    const r = await pool.query(
+      "SELECT id, metadata_cid, price_xrp, price_rlusd FROM marketplace_nfts WHERE id=$1",
+      [id]
+    );
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Not found" });
+    }
 
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-    [rlusdNode.CreatedNode.LedgerIndex, id]
-  );
-}
+    const xrpl = await import("xrpl");
+    client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
+
+    const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
+
+    const nfts = await client.request({
+      command: "account_nfts",
+      account: signingWallet.classicAddress
+    });
+
+    const nftToken = nfts.result.account_nfts.find(n => {
+      const uri = xrpl.convertHexToString(n.URI || "");
+      return uri.includes(r.rows[0].metadata_cid);
+    });
+
+    if (!nftToken) {
+      throw new Error("NFT not found on ledger");
+    }
+
+    // XRP sell offer
+    if (r.rows[0].price_xrp) {
+      const tx = {
+        TransactionType: "NFTokenCreateOffer",
+        Account: signingWallet.classicAddress,
+        NFTokenID: nftToken.NFTokenID,
+        Amount: String(Math.floor(parsePrice(r.rows[0].price_xrp) * 1_000_000)),
+        Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+      };
+
+      const result = await client.submitAndWait(tx, { wallet: signingWallet });
+      const node = result.result.meta.AffectedNodes.find(
+        n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+      );
+      if (!node) throw new Error("XRP sell offer failed");
+
+      await pool.query(
+        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+        [node.CreatedNode.LedgerIndex, id]
+      );
+    }
+
+    // RLUSD sell offer
+    if (r.rows[0].price_rlusd) {
+      const tx = {
+        TransactionType: "NFTokenCreateOffer",
+        Account: signingWallet.classicAddress,
+        NFTokenID: nftToken.NFTokenID,
+        Amount: {
+          currency: "RLUSD",
+          issuer: process.env.RLUSD_ISSUER,
+          value: String(parsePrice(r.rows[0].price_rlusd))
+        },
+        Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+      };
+
+      const result = await client.submitAndWait(tx, { wallet: signingWallet });
+      const node = result.result.meta.AffectedNodes.find(
+        n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+      );
+      if (!node) throw new Error("RLUSD sell offer failed");
+
+      await pool.query(
+        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+        [node.CreatedNode.LedgerIndex, id]
+      );
+    }
+
     await client.disconnect();
-    res.json({ ok: true });
+    return res.json({ ok: true });
+
   } catch (e) {
+    if (client) {
+      try { await client.disconnect(); } catch {}
+    }
     console.error("create-sell-offer error:", e);
-    try { await client.disconnect(); } catch (_) {}
-    res.status(500).json({ error: "Failed" });
+    return res.status(500).json({ error: "Failed" });
   }
 });
 
