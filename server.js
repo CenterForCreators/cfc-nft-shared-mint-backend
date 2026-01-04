@@ -148,62 +148,59 @@ app.post("/api/add-nft", async (req, res) => {
     }
 
     // XRPL — create sell offer (XPMarket style)
-    const xrpl = await import("xrpl");
-    const client = new xrpl.Client(process.env.XRPL_NETWORK);
-    await client.connect();
-
-    const creatorWallet = xrpl.Wallet.fromSeed(process.env.CREATOR_SEED);
-
-   const nfts = await client.request({
-  command: "account_nfts",
-  account: creatorWallet.classicAddress
-});
-
-const targetCid = String(metadata_cid || "").trim();
-
-const nftToken = nfts.result.account_nfts.find(n => {
+  app.post("/api/add-nft", async (req, res) => {
   try {
-    const uriStr = xrpl.convertHexToString(n.URI || "").trim();
-    return uriStr.includes(targetCid);
-  } catch {
-    return false;
-  }
-});
+    const {
+      submission_id,
+      name,
+      description,
+      category,
+      image_cid,
+      metadata_cid,
+      price_xrp,
+      price_rlusd,
+      creator_wallet,
+      terms,
+      website,
+      quantity
+    } = req.body;
 
-if (!nftToken) {
-  await client.disconnect();
-  return res.status(500).json({ error: "NFT not found in creator wallet" });
-}
-const sellOfferTx = {
-  TransactionType: "NFTokenCreateOffer",
-  Account: creatorWallet.classicAddress,
-  NFTokenID: nftToken.NFTokenID,
-  Amount: price_rlusd
-    ? {
-        currency: "RLUSD",
-        issuer: process.env.RLUSD_ISSUER,
-        value: String(parsePrice(price_rlusd))
-      }
-    : String(Math.floor(parsePrice(price_xrp) * 1_000_000)),
-  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-};
-    const sellResult = await client.submitAndWait(
-      sellOfferTx,
-      { wallet: creatorWallet }
-    );
-
-    const createdNode = sellResult.result.meta.AffectedNodes.find(
-      n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (!createdNode) {
-      await client.disconnect();
-      return res.status(500).json({ error: "Sell offer failed" });
+    if (!submission_id || !name || !image_cid || !metadata_cid || !creator_wallet) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const sellOfferIndex = createdNode.CreatedNode.LedgerIndex;
+    await pool.query(
+      `
+      INSERT INTO marketplace_nfts
+      (submission_id, name, description, category, image_cid, metadata_cid,
+       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
+       minted)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+      `,
+      [
+        submission_id,
+        name,
+        description || "",
+        category || "all",
+        image_cid,
+        metadata_cid,
+        price_xrp || null,
+        price_rlusd || null,
+        creator_wallet,
+        terms || "",
+        website || "",
+        quantity || 1
+      ]
+    );
 
-    await client.disconnect();
+    marketAllCache = { ts: 0, data: null };
+    res.json({ ok: true });
+
+  } catch (e) {
+    console.error("add-nft error:", e);
+    res.status(500).json({ error: "Failed to add NFT to marketplace" });
+  }
+});
 
     await pool.query(
       `
