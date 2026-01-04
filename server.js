@@ -390,14 +390,31 @@ if (!priceRow.rows.length) {
 const nftPrice = priceRow.rows[0];
 
 if (!nftToken) throw new Error("NFT not found");
+let sellTx;
 
-const sellTx = {
-  TransactionType: "NFTokenCreateOffer",
- Account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k",
-  NFTokenID: nftToken.NFTokenID,
-  Amount: "1",
-  Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-};
+if (nftPrice.price_rlusd) {
+  sellTx = {
+    TransactionType: "NFTokenCreateOffer",
+    Account: signingWallet.classicAddress,
+    NFTokenID: nftToken.NFTokenID,
+    Amount: {
+      currency: "RLUSD",
+      issuer: process.env.RLUSD_ISSUER,
+      value: String(parsePrice(nftPrice.price_rlusd))
+    },
+    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+  };
+} else if (nftPrice.price_xrp) {
+  sellTx = {
+    TransactionType: "NFTokenCreateOffer",
+    Account: signingWallet.classicAddress,
+    NFTokenID: nftToken.NFTokenID,
+    Amount: String(Math.floor(parsePrice(nftPrice.price_xrp) * 1_000_000)),
+    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+  };
+} else {
+  throw new Error("No price set for NFT");
+}
 
   const result = await client.submitAndWait(sellTx, { wallet: signingWallet });
 
