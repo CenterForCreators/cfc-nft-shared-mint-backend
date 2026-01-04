@@ -414,11 +414,11 @@ await pool.query(
   
 }
     await client.disconnect();
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
     console.error("create-sell-offer error:", e);
     try { await client.disconnect(); } catch (_) {}
-    return res.status(500).json({ error: "Failed" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
@@ -450,11 +450,11 @@ if (nftPrice.price_rlusd) {
   );
 }
     await client.disconnect();
-    return res.json({ ok: true });
+    res.json({ ok: true });
   } catch (e) {
     console.error("create-sell-offer error:", e);
     try { await client.disconnect(); } catch (_) {}
-    return res.status(500).json({ error: "Failed" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
