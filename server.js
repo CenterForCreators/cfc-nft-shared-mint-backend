@@ -377,6 +377,17 @@ const nftToken = nfts.result.account_nfts.find(n => {
     r.rows[0].metadata_cid.replace("ipfs://", "")
   );
 });
+// 🔒 Fetch enforced price from database
+const priceRow = await pool.query(
+  "SELECT price_xrp, price_rlusd FROM marketplace_nfts WHERE id=$1",
+  [id]
+);
+
+if (!priceRow.rows.length) {
+  throw new Error("Price not found for NFT");
+}
+
+const nftPrice = priceRow.rows[0];
 
 if (!nftToken) throw new Error("NFT not found");
 
