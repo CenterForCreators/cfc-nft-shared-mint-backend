@@ -174,44 +174,39 @@ app.post("/api/add-nft", async (req, res) => {
     marketAllCache = { ts: 0, data: null };
     res.json({ ok: true });
 
-  } catch (e) {
-    console.error("add-nft error:", e);
-    res.status(500).json({ error: "Failed to add NFT to marketplace" });
-  }
-});
+await pool.query(
+  `
+  INSERT INTO marketplace_nfts
+  (submission_id, name, description, category, image_cid, metadata_cid,
+   price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
+   minted)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+  `,
+  [
+    submission_id,
+    name,
+    description || "",
+    category || "all",
+    image_cid,
+    metadata_cid,
+    price_xrp || null,
+    price_rlusd || null,
+    creator_wallet,
+    terms || "",
+    website || "",
+    quantity || 1
+  ]
+);
 
-    await pool.query(
-      `
-      INSERT INTO marketplace_nfts
-      (submission_id, name, description, category, image_cid, metadata_cid,
-       price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
-       minted, sell_offer_index)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
-      `,
-      [
-        submission_id,
-        name,
-        description || "",
-        category || "all",
-        image_cid,
-        metadata_cid,
-        price_xrp || null,
-        price_rlusd || null,
-        creator_wallet,
-        terms || "",
-        website || "",
-        quantity || 1,
-        sellOfferIndex
-      ]
-    );
+// clear cache so NFT appears immediately
+marketAllCache = { ts: 0, data: null };
 
-    marketAllCache = { ts: 0, data: null };
-    res.json({ ok: true });
+res.json({ ok: true });
 
-  } catch (e) {
-    console.error("add-nft error:", e);
-    res.status(500).json({ error: "Failed to add NFT to marketplace" });
-  }
+} catch (e) {
+  console.error("add-nft error:", e);
+  res.status(500).json({ error: "Failed to add NFT to marketplace" });
+}
 });
 
 // ------------------------------
