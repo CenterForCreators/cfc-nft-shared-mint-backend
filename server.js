@@ -407,11 +407,11 @@ if (nftPrice.price_xrp) {
   );
 
   if (!xrpNode) throw new Error("XRP sell offer failed");
-
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index=$1 WHERE id=$2",
-    [xrpNode.CreatedNode.LedgerIndex, id]
-  );
+await pool.query(
+  "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+  [xrpNode.CreatedNode.LedgerIndex, id]
+);
+  
 }
 
 // ---- CREATE RLUSD SELL OFFER (if price exists) ----
@@ -435,29 +435,12 @@ if (nftPrice.price_rlusd) {
   );
 
   if (!rlusdNode) throw new Error("RLUSD sell offer failed");
+
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+    [rlusdNode.CreatedNode.LedgerIndex, id]
+  );
 }
-
-console.log("SELL OFFER RESULT:", JSON.stringify(result.result, null, 2));
-
-    const node = result.result.meta.AffectedNodes.find(
-      n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
-    );
-    if (!node) throw new Error("Sell offer failed");
-
-    const sellOfferIndex = node.CreatedNode.LedgerIndex;
-
-    await pool.query(
-      "UPDATE marketplace_nfts SET sell_offer_index=$1 WHERE id=$2",
-      [sellOfferIndex, id]
-    );
-
-    await client.disconnect();
-    res.json({ ok: true, sell_offer_index: sellOfferIndex });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed" });
-  }
-});
 
 
 // ------------------------------
