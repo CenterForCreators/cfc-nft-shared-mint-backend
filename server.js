@@ -382,7 +382,7 @@ if (!nftToken) throw new Error("NFT not found");
 
 const sellTx = {
   TransactionType: "NFTokenCreateOffer",
-  Account: signingWallet.classicAddress,
+ Account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k",
   NFTokenID: nftToken.NFTokenID,
   Amount: "1",
   Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
