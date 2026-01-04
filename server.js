@@ -233,7 +233,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-        NFTokenSellOffer: nft.sell_offer_index
+        NFTokenSellOffer: nft.sell_offer_index_xrp
       },
       options: {
         submit: true,
@@ -289,7 +289,7 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-        NFTokenSellOffer: nft.sell_offer_index
+        NFTokenSellOffer: nft.sell_offer_index_rlusd
       },
       options: {
         submit: true,
