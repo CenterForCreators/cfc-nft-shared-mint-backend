@@ -150,7 +150,7 @@ app.post("/api/add-nft", async (req, res) => {
         terms,
         website,
         quantity
-      FROM submissions
+      FROM admin_submissions
       WHERE id = $1
       `,
       [submission_id]
