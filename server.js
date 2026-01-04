@@ -174,29 +174,6 @@ app.post("/api/add-nft", async (req, res) => {
     marketAllCache = { ts: 0, data: null };
     res.json({ ok: true });
 
-await pool.query(
-  `
-  INSERT INTO marketplace_nfts
-  (submission_id, name, description, category, image_cid, metadata_cid,
-   price_xrp, price_rlusd, creator_wallet, terms, website, quantity,
-   minted)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
-  `,
-  [
-    submission_id,
-    name,
-    description || "",
-    category || "all",
-    image_cid,
-    metadata_cid,
-    price_xrp || null,
-    price_rlusd || null,
-    creator_wallet,
-    terms || "",
-    website || "",
-    quantity || 1
-  ]
-);
 
 // clear cache so NFT appears immediately
 marketAllCache = { ts: 0, data: null };
@@ -389,11 +366,33 @@ if (!priceRow.rows.length) {
 
 const nftPrice = priceRow.rows[0];
 
-if (!nftToken) throw new Error("NFT not found");
-let sellTx;
+// ---- CREATE XRP SELL OFFER (if price exists) ----
+if (nftPrice.price_xrp) {
+  const xrpSellTx = {
+    TransactionType: "NFTokenCreateOffer",
+    Account: signingWallet.classicAddress,
+    NFTokenID: nftToken.NFTokenID,
+    Amount: String(Math.floor(parsePrice(nftPrice.price_xrp) * 1_000_000)),
+    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+  };
 
+  const xrpResult = await client.submitAndWait(xrpSellTx, { wallet: signingWallet });
+
+  const xrpNode = xrpResult.result.meta.AffectedNodes.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+  );
+
+  if (!xrpNode) throw new Error("XRP sell offer failed");
+
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index=$1 WHERE id=$2",
+    [xrpNode.CreatedNode.LedgerIndex, id]
+  );
+}
+
+// ---- CREATE RLUSD SELL OFFER (if price exists) ----
 if (nftPrice.price_rlusd) {
-  sellTx = {
+  const rlusdSellTx = {
     TransactionType: "NFTokenCreateOffer",
     Account: signingWallet.classicAddress,
     NFTokenID: nftToken.NFTokenID,
@@ -404,16 +403,14 @@ if (nftPrice.price_rlusd) {
     },
     Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
   };
-} else if (nftPrice.price_xrp) {
-  sellTx = {
-    TransactionType: "NFTokenCreateOffer",
-    Account: signingWallet.classicAddress,
-    NFTokenID: nftToken.NFTokenID,
-    Amount: String(Math.floor(parsePrice(nftPrice.price_xrp) * 1_000_000)),
-    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-  };
-} else {
-  throw new Error("No price set for NFT");
+
+  const rlusdResult = await client.submitAndWait(rlusdSellTx, { wallet: signingWallet });
+
+  const rlusdNode = rlusdResult.result.meta.AffectedNodes.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+  );
+
+  if (!rlusdNode) throw new Error("RLUSD sell offer failed");
 }
 
   const result = await client.submitAndWait(sellTx, { wallet: signingWallet });
