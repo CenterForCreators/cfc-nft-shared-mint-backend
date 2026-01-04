@@ -146,7 +146,7 @@ app.post("/api/add-nft", async (req, res) => {
     if (!submission_id || !name || !image_cid || !metadata_cid || !creator_wallet) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-marketAllCache = { ts: 0, data: null };
+
     await pool.query(
       `
       INSERT INTO marketplace_nfts
