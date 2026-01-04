@@ -147,28 +147,6 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // XRPL — create sell offer (XPMarket style)
-  app.post("/api/add-nft", async (req, res) => {
-  try {
-    const {
-      submission_id,
-      name,
-      description,
-      category,
-      image_cid,
-      metadata_cid,
-      price_xrp,
-      price_rlusd,
-      creator_wallet,
-      terms,
-      website,
-      quantity
-    } = req.body;
-
-    if (!submission_id || !name || !image_cid || !metadata_cid || !creator_wallet) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
     await pool.query(
       `
       INSERT INTO marketplace_nfts
