@@ -390,10 +390,10 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
 
     const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
 
-    const nfts = await client.request({
-      command: "account_nfts",
-      account: signingWallet.classicAddress
-    });
+   const nfts = await client.request({
+  command: "account_nfts",
+  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k"
+});
 
     const metaCid = (r.rows[0].metadata_cid || "").replace("ipfs://", "");
     const nftToken = nfts.result.account_nfts.find(n => {
