@@ -271,9 +271,9 @@ app.post("/api/market/pay-xrp", async (req, res) => {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const nft = r.rows[0];
-if (!nft.sell_offer_index_rlusd) {
-  return res.status(400).json({ error: "No RLUSD sell offer set for this NFT. Run create-sell-offer first." });
+   const nft = r.rows[0];
+if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
+  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
 }
 
     const payload = {
