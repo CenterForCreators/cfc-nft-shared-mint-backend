@@ -388,7 +388,7 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
     client = new xrpl.Client(process.env.XRPL_NETWORK);
     await client.connect();
 
-    const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
+    const mintingAccount = "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k";
 
    const nfts = await client.request({
   command: "account_nfts",
@@ -408,7 +408,7 @@ if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
 
   const tx = {
     TransactionType: "NFTokenCreateOffer",
-    Account: signingWallet.classicAddress,
+   Account: mintingAccount,
     NFTokenID: nftToken.NFTokenID,
     Amount: String(Math.floor(Number(r.rows[0].price_xrp) * 1_000_000)),
     Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
@@ -422,7 +422,6 @@ if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
 
 if (!node) {
   console.log("Sell offer already exists or no new offer created");
-  return res.json({ ok: true });
 }
 
 
@@ -433,17 +432,11 @@ if (!node) {
     );
   }
 
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, id]
-      );
-    }
-
     // RLUSD sell offer
     if (r.rows[0].price_rlusd) {
       const tx = {
         TransactionType: "NFTokenCreateOffer",
-        Account: signingWallet.classicAddress,
+        Account: mintingAccount,
         NFTokenID: nftToken.NFTokenID,
         Amount: {
           currency: "RLUSD",
