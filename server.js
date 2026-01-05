@@ -389,6 +389,7 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
     await client.connect();
 
     const mintingAccount = "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k";
+    const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
 
    const nfts = await client.request({
   command: "account_nfts",
