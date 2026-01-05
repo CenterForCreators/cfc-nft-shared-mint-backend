@@ -403,33 +403,29 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
 
     if (!nftToken) throw new Error("NFT not found on ledger");
 
-    // XRP sell offer
-if (r.rows[0].price_xrp) {
-
-  const xrpPrice = Number(r.rows[0].price_xrp);
-  if (!xrpPrice || xrpPrice <= 0) {
-    throw new Error("Invalid XRP price");
-  }
+  // XRP sell offer
+if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
 
   const tx = {
     TransactionType: "NFTokenCreateOffer",
     Account: signingWallet.classicAddress,
     NFTokenID: nftToken.NFTokenID,
-    Amount: String(Math.floor(xrpPrice * 1_000_000)),
+    Amount: String(Math.floor(Number(r.rows[0].price_xrp) * 1_000_000)),
     Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
   };
 
-      const result = await client.submitAndWait(tx, { wallet: signingWallet });
-      const node = result.result.meta.AffectedNodes.find(
-        n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-      );
-    if (!node) {
-  console.log("XRP sell offer already exists, skipping");
-} else {
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-    [node.CreatedNode.LedgerIndex, id]
+  const result = await client.submitAndWait(tx, { wallet: signingWallet });
+
+  const node = result.result.meta.AffectedNodes.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
   );
+
+  if (node) {
+    await pool.query(
+      "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+      [node.CreatedNode.LedgerIndex, id]
+    );
+  }
 }
 
       await pool.query(
