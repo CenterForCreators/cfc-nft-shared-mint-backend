@@ -431,7 +431,7 @@ if (!node) {
       [node.CreatedNode.LedgerIndex, id]
     );
   }
-
+} 
     // RLUSD sell offer
     if (r.rows[0].price_rlusd) {
       const tx = {
