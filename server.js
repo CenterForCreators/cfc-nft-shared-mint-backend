@@ -48,6 +48,20 @@ async function initDB() {
     ALTER TABLE marketplace_nfts
     ADD COLUMN IF NOT EXISTS is_delisted BOOLEAN DEFAULT false;
   `);
+    await pool.query(`
+    ALTER TABLE marketplace_nfts
+    ADD COLUMN IF NOT EXISTS sell_offer_index_xrp TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE marketplace_nfts
+    ADD COLUMN IF NOT EXISTS sell_offer_index_rlusd TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE marketplace_nfts
+    ADD COLUMN IF NOT EXISTS sell_offer_index TEXT;
+  `);
 }
 
 async function initOrdersDB() {
@@ -258,11 +272,14 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     }
 
     const nft = r.rows[0];
+if (!nft.sell_offer_index_rlusd) {
+  return res.status(400).json({ error: "No RLUSD sell offer set for this NFT. Run create-sell-offer first." });
+}
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-        NFTokenSellOffer: nft.sell_offer_index_xrp
+       NFTokenSellOffer: nft.sell_offer_index_xrp || nft.sell_offer_index
       },
       options: {
         submit: true,
@@ -314,6 +331,10 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     }
 
     const nft = r.rows[0];
+    if (!nft.sell_offer_index_rlusd) {
+  return res.status(400).json({ error: "No RLUSD sell offer set for this NFT. Run create-sell-offer first." });
+}
+
 
     const payload = {
       txjson: {
@@ -351,79 +372,6 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
     res.status(500).json({ error: "Buy failed" });
   }
 });
- app.post("/api/admin/create-sell-offer", async (req, res) => {
-  try {
-    const { id } = req.body;
-
-    const r = await pool.query(
-      "SELECT id, metadata_cid FROM marketplace_nfts WHERE id=$1",
-      [id]
-    );
-    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
-
-    const xrpl = await import("xrpl");
-    const client = new xrpl.Client(process.env.XRPL_NETWORK);
-    await client.connect();
-
-   const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
-
-   const nfts = await client.request({
-  command: "account_nfts",
-  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k",
-});
-const nftToken = nfts.result.account_nfts.find(n => {
-  if (n.Burned) return false;
-  const uriText = xrpl.convertHexToString(n.URI || "");
-  return uriText.replace("ipfs://", "").includes(
-    r.rows[0].metadata_cid.replace("ipfs://", "")
-  );
-});
-// 🔒 Fetch enforced price from database
-const priceRow = await pool.query(
-  "SELECT price_xrp, price_rlusd FROM marketplace_nfts WHERE id=$1",
-  [id]
-);
-
-if (!priceRow.rows.length) {
-  throw new Error("Price not found for NFT");
-}
-
-const nftPrice = priceRow.rows[0];
-
-// ---- CREATE XRP SELL OFFER (if price exists) ----
-if (nftPrice.price_xrp) {
-  const xrpSellTx = {
-    TransactionType: "NFTokenCreateOffer",
-    Account: signingWallet.classicAddress,
-    NFTokenID: nftToken.NFTokenID,
-    Amount: String(Math.floor(parsePrice(nftPrice.price_xrp) * 1_000_000)),
-    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-  };
-
-  const xrpResult = await client.submitAndWait(xrpSellTx, { wallet: signingWallet });
-
-  const xrpNode = xrpResult.result.meta.AffectedNodes.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-  );
-
-  if (!xrpNode) throw new Error("XRP sell offer failed");
-await pool.query(
-  "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-  [xrpNode.CreatedNode.LedgerIndex, id]
-);
-  
-}
-    await client.disconnect();
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("create-sell-offer error:", e);
-    try { await client.disconnect(); } catch (_) {}
-    res.status(500).json({ error: "Failed" });
-  }
-});
-
-// ---- CREATE RLUSD SELL OFFER (if price exists) ----
-
 app.post("/api/admin/create-sell-offer", async (req, res) => {
   let client;
 
@@ -449,14 +397,13 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
       account: signingWallet.classicAddress
     });
 
+    const metaCid = (r.rows[0].metadata_cid || "").replace("ipfs://", "");
     const nftToken = nfts.result.account_nfts.find(n => {
-      const uri = xrpl.convertHexToString(n.URI || "");
-      return uri.includes(r.rows[0].metadata_cid);
+      const uri = xrpl.convertHexToString(n.URI || "").replace("ipfs://", "");
+      return uri.includes(metaCid);
     });
 
-    if (!nftToken) {
-      throw new Error("NFT not found on ledger");
-    }
+    if (!nftToken) throw new Error("NFT not found on ledger");
 
     // XRP sell offer
     if (r.rows[0].price_xrp) {
@@ -510,13 +457,12 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
     return res.json({ ok: true });
 
   } catch (e) {
-    if (client) {
-      try { await client.disconnect(); } catch {}
-    }
+    if (client) { try { await client.disconnect(); } catch {} }
     console.error("create-sell-offer error:", e);
     return res.status(500).json({ error: "Failed" });
   }
 });
+
 
 
 // ------------------------------
