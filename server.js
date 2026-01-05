@@ -426,7 +426,6 @@ if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
       [node.CreatedNode.LedgerIndex, id]
     );
   }
-}
 
       await pool.query(
         "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
