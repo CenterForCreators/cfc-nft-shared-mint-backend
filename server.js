@@ -416,9 +416,15 @@ if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
 
   const result = await client.submitAndWait(tx, { wallet: signingWallet });
 
-  const node = result.result.meta.AffectedNodes.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-  );
+  const node = result.result.meta.AffectedNodes?.find(
+  n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
+);
+
+if (!node) {
+  console.log("Sell offer already exists or no new offer created");
+  return res.json({ ok: true });
+}
+
 
   if (node) {
     await pool.query(
