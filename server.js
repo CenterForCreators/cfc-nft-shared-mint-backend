@@ -410,7 +410,13 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
         TransactionType: "NFTokenCreateOffer",
         Account: signingWallet.classicAddress,
         NFTokenID: nftToken.NFTokenID,
-        Amount: String(Math.floor(parsePrice(r.rows[0].price_xrp) * 1_000_000)),
+        const xrpPrice = Number(r.rows[0].price_xrp);
+if (!xrpPrice || xrpPrice <= 0) {
+  throw new Error("Invalid XRP price");
+}
+
+Amount: String(Math.floor(xrpPrice * 1_000_000)),
+
         Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
       };
 
