@@ -423,7 +423,14 @@ if (r.rows[0].price_xrp) {
       const node = result.result.meta.AffectedNodes.find(
         n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
       );
-      if (!node) throw new Error("XRP sell offer failed");
+    if (!node) {
+  console.log("XRP sell offer already exists, skipping");
+} else {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+    [node.CreatedNode.LedgerIndex, id]
+  );
+}
 
       await pool.query(
         "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
