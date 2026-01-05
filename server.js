@@ -404,20 +404,20 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
     if (!nftToken) throw new Error("NFT not found on ledger");
 
     // XRP sell offer
-    if (r.rows[0].price_xrp) {
-      const tx = {
-        TransactionType: "NFTokenCreateOffer",
-        Account: signingWallet.classicAddress,
-        NFTokenID: nftToken.NFTokenID,
-        const xrpPrice = Number(r.rows[0].price_xrp);
-if (!xrpPrice || xrpPrice <= 0) {
-  throw new Error("Invalid XRP price");
-}
+if (r.rows[0].price_xrp) {
 
-Amount: String(Math.floor(xrpPrice * 1_000_000)),
+  const xrpPrice = Number(r.rows[0].price_xrp);
+  if (!xrpPrice || xrpPrice <= 0) {
+    throw new Error("Invalid XRP price");
+  }
 
-        Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-      };
+  const tx = {
+    TransactionType: "NFTokenCreateOffer",
+    Account: signingWallet.classicAddress,
+    NFTokenID: nftToken.NFTokenID,
+    Amount: String(Math.floor(xrpPrice * 1_000_000)),
+    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+  };
 
       const result = await client.submitAndWait(tx, { wallet: signingWallet });
       const node = result.result.meta.AffectedNodes.find(
