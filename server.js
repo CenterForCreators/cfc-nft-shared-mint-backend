@@ -439,11 +439,11 @@ if (!node) {
         TransactionType: "NFTokenCreateOffer",
         Account: mintingAccount,
         NFTokenID: nftToken.NFTokenID,
-        Amount: {
-          currency: "RLUSD",
-          issuer: process.env.RLUSD_ISSUER,
-          value: String(parsePrice(r.rows[0].price_rlusd))
-        },
+       Amount: {
+  currency: "524C555344000000000000000000000000000000",
+  issuer: process.env.RLUSD_ISSUER,
+  value: String(parsePrice(r.rows[0].price_rlusd))
+},
         Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
       };
 
