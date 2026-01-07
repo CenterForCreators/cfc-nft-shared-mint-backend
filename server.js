@@ -371,104 +371,72 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
   }
 });
 app.post("/api/admin/create-sell-offer", async (req, res) => {
-  let client;
-
   try {
-    const { id } = req.body;
+    const { id, currency } = req.body;
 
     const r = await pool.query(
-      "SELECT id, metadata_cid, price_xrp, price_rlusd FROM marketplace_nfts WHERE id=$1",
+      "SELECT id, nftoken_id, creator_wallet, price_xrp, price_rlusd FROM marketplace_nfts WHERE id=$1",
       [id]
     );
+
     if (!r.rows.length) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "NFT not found" });
     }
 
-    const xrpl = await import("xrpl");
-    client = new xrpl.Client(process.env.XRPL_NETWORK);
-    await client.connect();
+    const nft = r.rows[0];
 
-    const mintingAccount = "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k";
-    const signingWallet = xrpl.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
+    if (!nft.nftoken_id) {
+      return res.status(400).json({ error: "Missing NFTokenID" });
+    }
 
-   const nfts = await client.request({
-  command: "account_nfts",
-  account: "rH7tJAQ8NaZqN66pgBviQkUZy7YuioVM9k"
-});
-
-    const metaCid = (r.rows[0].metadata_cid || "").replace("ipfs://", "");
-    const nftToken = nfts.result.account_nfts.find(n => {
-      const uri = xrpl.convertHexToString(n.URI || "").replace("ipfs://", "");
-      return uri.includes(metaCid);
-    });
-
-    if (!nftToken) throw new Error("NFT not found on ledger");
-
-  // XRP sell offer
-if (r.rows[0].price_xrp && !r.rows[0].sell_offer_index_xrp) {
-
-  const tx = {
-    TransactionType: "NFTokenCreateOffer",
-   Account: mintingAccount,
-    NFTokenID: nftToken.NFTokenID,
-    Amount: String(Math.floor(Number(r.rows[0].price_xrp) * 1_000_000)),
-    Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-  };
-
-  const result = await client.submitAndWait(tx, { wallet: signingWallet });
-
-  const node = result.result.meta.AffectedNodes?.find(
-  n => n.CreatedNode && n.CreatedNode.LedgerEntryType === "NFTokenOffer"
-);
-
-if (!node) {
-  console.log("Sell offer already exists or no new offer created");
-}
-
-
-  if (node) {
-    await pool.query(
-      "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-      [node.CreatedNode.LedgerIndex, id]
-    );
-  }
-} 
-    // RLUSD sell offer
-    if (r.rows[0].price_rlusd) {
-      const tx = {
-        TransactionType: "NFTokenCreateOffer",
-        Account: mintingAccount,
-        NFTokenID: nftToken.NFTokenID,
-       Amount: {
-  currency: "524C555344000000000000000000000000000000",
-  issuer: process.env.RLUSD_ISSUER,
-  value: String(parsePrice(r.rows[0].price_rlusd))
-},
-        Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+    let amount;
+    if (currency === "XRP") {
+      amount = String(Math.floor(Number(nft.price_xrp) * 1_000_000));
+    } else {
+      amount = {
+        currency: "524C555344000000000000000000000000000000",
+        issuer: process.env.RLUSD_ISSUER,
+        value: String(nft.price_rlusd)
       };
-
-      const result = await client.submitAndWait(tx, { wallet: signingWallet });
-      const node = result.result.meta.AffectedNodes.find(
-        n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-      );
-      if (!node) throw new Error("RLUSD sell offer failed");
-
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, id]
-      );
     }
 
-    await client.disconnect();
-    return res.json({ ok: true });
+    const payload = {
+      txjson: {
+        TransactionType: "NFTokenCreateOffer",
+        Account: nft.creator_wallet,
+        NFTokenID: nft.nftoken_id,
+        Amount: amount,
+        Flags: 1
+      },
+      options: {
+        submit: true
+      },
+      custom_meta: {
+        blob: {
+          marketplace_id: nft.id,
+          currency
+        }
+      }
+    };
+
+    const xumm = await axios.post(
+      "https://xumm.app/api/v1/platform/payload",
+      payload,
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET
+        }
+      }
+    );
+
+    res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    if (client) { try { await client.disconnect(); } catch {} }
-    console.error("create-sell-offer error:", e);
-    return res.status(500).json({ error: "Failed" });
+    console.error(e);
+    res.status(500).json({ error: "Failed to create sell offer" });
   }
 });
-
 
 
 // ------------------------------
