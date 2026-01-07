@@ -315,7 +315,7 @@ app.get("/api/market/all", async (_, res) => {
   WHERE m2.submission_id = marketplace_nfts.submission_id
     AND m2.sold = false
     AND COALESCE(m2.is_delisted, false) = false
-) AS quantity_remaining
+) AS quantity_remaining,
 
         (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
       FROM marketplace_nfts
@@ -327,10 +327,11 @@ app.get("/api/market/all", async (_, res) => {
 
     marketAllCache = { ts: now, data: r.rows };
     res.json(r.rows);
-  } catch (e) {
-    console.error("market/all error:", e);
-    res.status(500).json({ error: "Failed to load market" });
-  }
+ } catch (e) {
+  console.error("market/all error:", e);
+  return res.json([]);
+}
+
 });
 
 // ------------------------------
