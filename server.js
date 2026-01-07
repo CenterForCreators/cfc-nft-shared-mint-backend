@@ -146,27 +146,6 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "submission_id required" });
     }
 
-    // 1️⃣ Fetch submission details
-    const subRes = await pool.query(
-      `
-      SELECT
-        id,
-        name,
-        description,
-        category,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity
-      FROM submissions
-      WHERE id = $1
-      `,
-      [submission_id]
-    );
 
     if (!subRes.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
@@ -182,20 +161,20 @@ for (let i = 0; i < qty; i++) {
     `
     INSERT INTO marketplace_nfts
     (
-      submission_id,
-      name,
-      description,
-      category,
-      image_cid,
-      metadata_cid,
-      price_xrp,
-      price_rlusd,
-      creator_wallet,
-      terms,
-      website,
-      quantity,
-      minted
-    )
+  submission_id,
+  name,
+  description,
+  category,
+  image_cid,
+  metadata_cid,
+  price_xrp,
+  price_rlusd,
+  creator_wallet,
+  terms,
+  website,
+  quantity
+} = req.body;
+
     VALUES
     ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,true)
     `,
