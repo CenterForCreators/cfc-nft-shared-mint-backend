@@ -175,42 +175,46 @@ app.post("/api/add-nft", async (req, res) => {
     const s = subRes.rows[0];
 
     // 2️⃣ Insert into marketplace
-    await pool.query(
-      `
-      INSERT INTO marketplace_nfts
-      (
-        submission_id,
-        name,
-        description,
-        category,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity,
-        minted
-      )
-      VALUES
-      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
-      `,
-      [
-        s.id,
-        s.name,
-        s.description || "",
-        s.category || "all",
-        s.image_cid,
-        s.metadata_cid,
-        s.price_xrp || null,
-        s.price_rlusd || null,
-        s.creator_wallet,
-        s.terms || "",
-        s.website || "",
-        s.quantity || 1
-      ]
-    );
+   const qty = Number(s.quantity || 1);
+
+for (let i = 0; i < qty; i++) {
+  await pool.query(
+    `
+    INSERT INTO marketplace_nfts
+    (
+      submission_id,
+      name,
+      description,
+      category,
+      image_cid,
+      metadata_cid,
+      price_xrp,
+      price_rlusd,
+      creator_wallet,
+      terms,
+      website,
+      quantity,
+      minted
+    )
+    VALUES
+    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,true)
+    `,
+    [
+      s.id,
+      s.name,
+      s.description || "",
+      s.category || "all",
+      s.image_cid,
+      s.metadata_cid,
+      s.price_xrp || null,
+      s.price_rlusd || null,
+      s.creator_wallet,
+      s.terms || "",
+      s.website || ""
+    ]
+  );
+}
+
 // 🔹 AUTO CREATE SELL OFFERS USING REGULAR KEY (ADD-ONLY)
 try {
   const xrplLib = await import("xrpl");
