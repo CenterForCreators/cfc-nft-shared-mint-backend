@@ -305,7 +305,14 @@ app.get("/api/market/all", async (_, res) => {
 
     const r = await pool.query(`
       SELECT *,
-        GREATEST(COALESCE(quantity,0),0) AS quantity_remaining,
+        (
+  SELECT COUNT(*)
+  FROM marketplace_nfts m2
+  WHERE m2.submission_id = marketplace_nfts.submission_id
+    AND m2.sold = false
+    AND COALESCE(m2.is_delisted, false) = false
+) AS quantity_remaining
+
         (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
       FROM marketplace_nfts
       WHERE minted = true
