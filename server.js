@@ -146,10 +146,30 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "submission_id required" });
     }
 
+  SELECT
+    id,
+    name,
+    description,
+    category,
+    image_cid,
+    metadata_cid,
+    price_xrp,
+    price_rlusd,
+    creator_wallet,
+    terms,
+    website,
+    quantity
+  FROM admin_submissions
+  WHERE id = $1
+  `,
+  [submission_id]
+);
 
     if (!subRes.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
+const subRes = await pool.query(
+  `
 
     const s = subRes.rows[0];
 
