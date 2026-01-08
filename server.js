@@ -133,6 +133,65 @@ app.get("/", (_, res) => {
 app.get("/api/xaman/webhook", (req, res) => {
   res.status(200).send("OK");
 });
+// ------------------------------
+// LIST ON MARKETPLACE (ONE-TIME REGULAR KEY SIGN)
+// ------------------------------
+app.post("/api/list-on-marketplace", async (req, res) => {
+  try {
+    const { submission_id, wallet } = req.body;
+
+    if (!submission_id || !wallet) {
+      return res.status(400).json({ error: "Missing submission_id or wallet" });
+    }
+
+    const r = await pool.query(
+      "SELECT regular_key_set FROM submissions WHERE id=$1",
+      [submission_id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    // If regular key NOT set yet → require Xaman sign (one time)
+    if (!r.rows[0].regular_key_set) {
+      const payload = {
+        txjson: {
+          TransactionType: "SetRegularKey",
+          Account: wallet,
+          RegularKey: process.env.MARKETPLACE_REGULAR_KEY
+        },
+        options: {
+          submit: true,
+          return_url: {
+            web: "https://centerforcreators.com/nft-creator",
+            app: "https://centerforcreators.com/nft-creator"
+          }
+        }
+      };
+
+      const xumm = await axios.post(
+        "https://xumm.app/api/v1/platform/payload",
+        payload,
+        {
+          headers: {
+            "X-API-Key": process.env.XUMM_API_KEY,
+            "X-API-Secret": process.env.XUMM_API_SECRET
+          }
+        }
+      );
+
+      return res.json({ xumm_link: xumm.data.next.always });
+    }
+
+    // Regular key already set → proceed with listing
+    res.json({ ok: true });
+
+  } catch (e) {
+    console.error("list-on-marketplace error:", e);
+    res.status(500).json({ error: "Failed to start marketplace listing" });
+  }
+});
 
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
