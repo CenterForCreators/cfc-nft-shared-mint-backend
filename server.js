@@ -153,7 +153,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-    // If regular key NOT set yet → require Xaman sign (one time)
+    // 🔹 REGULAR KEY NOT SET → OPEN XAMAN (USING WORKING PAYLOAD FORMAT)
     if (!r.rows[0].regular_key_set) {
       const payload = {
         txjson: {
@@ -184,14 +184,15 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.json({ xumm_link: xumm.data.next.always });
     }
 
-    // Regular key already set → proceed with listing
-    res.json({ ok: true });
+    // 🔹 REGULAR KEY ALREADY SET → CONTINUE
+    return res.json({ ok: true });
 
   } catch (e) {
-    console.error("list-on-marketplace error:", e);
-    res.status(500).json({ error: "Failed to start marketplace listing" });
+    console.error("list-on-marketplace error:", e?.response?.data || e.message);
+    return res.status(500).json({ error: "Failed to start marketplace listing" });
   }
 });
+
 
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
