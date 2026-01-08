@@ -161,7 +161,7 @@ const subRes = await pool.query(
     terms,
     website,
     quantity
-  FROM admin_submissions
+  FROM submissions
   WHERE id = $1
   `,
   [submission_id]
