@@ -9,7 +9,7 @@ const PLATFORM_FEE_PERCENT = 0.05;
 const CREATOR_PERCENT = 0.95;
 
 const { Pool } = pg;
-
+ 
 // ------------------------------
 // DATABASE
 // ------------------------------
