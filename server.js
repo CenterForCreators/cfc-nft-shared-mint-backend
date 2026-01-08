@@ -211,7 +211,6 @@ await pool.query(
   ]
 );
    
-}
 
 // 🔹 AUTO CREATE SELL OFFERS USING REGULAR KEY (ADD-ONLY)
 try {
