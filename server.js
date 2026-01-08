@@ -173,12 +173,8 @@ if (!subRes.rows.length) {
 
 const s = subRes.rows[0];
 
-
-    // 2️⃣ Insert into marketplace
-   const qty = Number(s.quantity || 1);
-
-for (let i = 0; i < qty; i++) {
- await pool.query(
+// 2️⃣ Insert ONE marketplace row with batch quantity
+await pool.query(
   `
   INSERT INTO marketplace_nfts
   (
@@ -197,7 +193,7 @@ for (let i = 0; i < qty; i++) {
     minted
   )
   VALUES
-  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,true)
+  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
   `,
   [
     s.id,
@@ -210,10 +206,11 @@ for (let i = 0; i < qty; i++) {
     s.price_rlusd || null,
     s.creator_wallet,
     s.terms || "",
-    s.website || ""
+    s.website || "",
+    Number(s.quantity || 1)
   ]
 );
-
+   
 }
 
 // 🔹 AUTO CREATE SELL OFFERS USING REGULAR KEY (ADD-ONLY)
