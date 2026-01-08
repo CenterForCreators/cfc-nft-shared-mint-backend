@@ -160,7 +160,7 @@ const subRes = await pool.query(
     creator_wallet,
     terms,
     website,
-    quantity
+    batch_qty AS quantity
   FROM submissions
   WHERE id = $1
   `,
