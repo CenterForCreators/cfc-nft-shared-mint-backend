@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -133,11 +134,10 @@ app.get("/", (_, res) => {
 app.get("/api/xaman/webhook", (req, res) => {
   res.status(200).send("OK");
 });
-
 // ------------------------------
-// LIST FOR SALE (TEMP REGULAR KEY → CREATE OFFERS → REMOVE KEY)
+// LIST ON MARKETPLACE (ONE-TIME REGULAR KEY SIGN)
 // ------------------------------
-app.post("/api/list-for-sale", async (req, res) => {
+app.post("/api/list-on-marketplace", async (req, res) => {
   try {
     const { submission_id, wallet } = req.body;
 
@@ -145,93 +145,52 @@ app.post("/api/list-for-sale", async (req, res) => {
       return res.status(400).json({ error: "Missing submission_id or wallet" });
     }
 
-    // get one NFT for this submission
     const r = await pool.query(
-      `
-      SELECT id, nftoken_id, price_xrp, price_rlusd
-      FROM marketplace_nfts
-      WHERE submission_id=$1
-      LIMIT 1
-      `,
+      "SELECT regular_key_set FROM submissions WHERE id=$1",
       [submission_id]
     );
 
     if (!r.rows.length) {
-      return res.status(404).json({ error: "NFT not found" });
+      return res.status(404).json({ error: "Submission not found" });
     }
 
-    const nft = r.rows[0];
-
-    // build tx sequence
-    const txs = [];
-
-    // 1) set regular key (temporary)
-    txs.push({
-      TransactionType: "SetRegularKey",
-      Account: wallet,
-      RegularKey: process.env.MARKETPLACE_REGULAR_KEY
-    });
-
-    // 2) create XRP sell offer
-    if (nft.price_xrp) {
-      txs.push({
-        TransactionType: "NFTokenCreateOffer",
-        Account: wallet,
-        NFTokenID: nft.nftoken_id,
-        Amount: String(Math.floor(Number(nft.price_xrp) * 1_000_000)),
-        Flags: 1
-      });
-    }
-
-    // 3) create RLUSD sell offer (if trustline exists)
-    if (nft.price_rlusd) {
-      txs.push({
-        TransactionType: "NFTokenCreateOffer",
-        Account: wallet,
-        NFTokenID: nft.nftoken_id,
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: process.env.RLUSD_ISSUER,
-          value: String(nft.price_rlusd)
+    // 🔹 REGULAR KEY NOT SET → OPEN XAMAN (USING WORKING PAYLOAD FORMAT)
+    if (!r.rows[0].regular_key_set) {
+      const payload = {
+        txjson: {
+          TransactionType: "SetRegularKey",
+          Account: wallet,
+          RegularKey: process.env.MARKETPLACE_REGULAR_KEY
         },
-        Flags: 1
-      });
+        options: {
+          submit: true,
+          return_url: {
+            web: "https://centerforcreators.com/nft-creator",
+            app: "https://centerforcreators.com/nft-creator"
+          }
+        }
+      };
+
+      const xumm = await axios.post(
+        "https://xumm.app/api/v1/platform/payload",
+        payload,
+        {
+          headers: {
+            "X-API-Key": process.env.XUMM_API_KEY,
+            "X-API-Secret": process.env.XUMM_API_SECRET
+          }
+        }
+      );
+
+      return res.json({ xumm_link: xumm.data.next.always });
     }
 
-    // 4) remove regular key
-    txs.push({
-      TransactionType: "SetRegularKey",
-      Account: wallet
-    });
-
-    // open Xaman once
-    const payload = {
-      txjson: txs,
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-creator",
-          app: "https://centerforcreators.com/nft-creator"
-        }
-      }
-    };
-
-    const xumm = await axios.post(
-      "https://xumm.app/api/v1/platform/payload",
-      payload,
-      {
-        headers: {
-          "X-API-Key": process.env.XUMM_API_KEY,
-          "X-API-Secret": process.env.XUMM_API_SECRET
-        }
-      }
-    );
-
-    res.json({ link: xumm.data.next.always });
+    // 🔹 REGULAR KEY ALREADY SET → CONTINUE
+    return res.json({ ok: true });
 
   } catch (e) {
-    console.error("list-for-sale error:", e?.response?.data || e.message);
-    res.status(500).json({ error: "Failed to list for sale" });
+    console.error("list-on-marketplace error:", e?.response?.data || e.message);
+    return res.status(500).json({ error: "Failed to start marketplace listing" });
   }
 });
 
@@ -408,7 +367,13 @@ app.get("/api/market/all", async (_, res) => {
 
     const r = await pool.query(`
       SELECT *,
-      quantity AS quantity_remaining, 
+        (
+  SELECT COUNT(*)
+  FROM marketplace_nfts m2
+  WHERE m2.submission_id = marketplace_nfts.submission_id
+    AND m2.sold = false
+    AND COALESCE(m2.is_delisted, false) = false
+) AS quantity_remaining,
 
         (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
       FROM marketplace_nfts
