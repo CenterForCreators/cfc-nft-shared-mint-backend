@@ -213,73 +213,7 @@ await pool.query(
 );
    
 
-// 🔹 AUTO CREATE SELL OFFERS USING REGULAR KEY (ADD-ONLY)
-try {
-  const xrplLib = await import("xrpl");
-  const client = new xrplLib.Client(process.env.XRPL_NETWORK);
-  await client.connect();
 
-  const nftRes = await pool.query(
-    "SELECT id, nftoken_id, price_xrp, price_rlusd FROM marketplace_nfts WHERE submission_id=$1",
-    [submission_id]
-  );
-
-  const nft = nftRes.rows[0];
-
-  if (nft?.nftoken_id && nft.price_xrp) {
-    const tx = {
-      TransactionType: "NFTokenCreateOffer",
-      Account: wallet.classicAddress,
-      NFTokenID: nft.nftoken_id,
-      Amount: String(Math.floor(Number(nft.price_xrp) * 1_000_000)),
-      Flags: xrplLib.NFTokenCreateOfferFlags.tfSellNFToken
-    };
-
-    const result = await client.submitAndWait(tx, { wallet });
-
-    const node = result.result.meta.AffectedNodes.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (node) {
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, nft.id]
-      );
-    }
-  }
-
-  if (nft?.nftoken_id && nft.price_rlusd) {
-    const tx = {
-      TransactionType: "NFTokenCreateOffer",
-      Account: wallet.classicAddress,
-      NFTokenID: nft.nftoken_id,
-      Amount: {
-        currency: "524C555344000000000000000000000000000000",
-        issuer: process.env.RLUSD_ISSUER,
-        value: String(nft.price_rlusd)
-      },
-      Flags: xrplLib.NFTokenCreateOfferFlags.tfSellNFToken
-    };
-
-    const result = await client.submitAndWait(tx, { wallet });
-
-    const node = result.result.meta.AffectedNodes.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (node) {
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, nft.id]
-      );
-    }
-  }
-
-  await client.disconnect();
-} catch (e) {
-  console.error("auto sell-offer error:", e.message);
-}
 
     // 3️⃣ Clear cache so it appears instantly
     marketAllCache = { ts: 0, data: null };
