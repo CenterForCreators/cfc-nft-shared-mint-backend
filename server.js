@@ -465,9 +465,35 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
     const nftId = p?.custom_meta?.blob?.nft_id;
     const buyerWallet = p?.response?.account;
-    if (!nftId || !buyerWallet) return res.json({ ok: true });
 
     const txHash = p?.response?.txid;
+   // ------------------------------
+// STORE SELL OFFER INDEX (ADD-ONLY)
+// ------------------------------
+const affected = p?.response?.meta?.AffectedNodes || [];
+
+const createdOffer = affected.find(
+  n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+);
+
+if (createdOffer) {
+  const offerId = createdOffer.CreatedNode.LedgerIndex;
+  const marketplaceId = p?.custom_meta?.blob?.marketplace_id;
+  const currency = p?.custom_meta?.blob?.currency;
+
+  if (offerId && marketplaceId) {
+    const column =
+      currency === "RLUSD"
+        ? "sell_offer_index_rlusd"
+        : "sell_offer_index_xrp";
+
+    await client.query(
+      `UPDATE marketplace_nfts SET ${column}=$1 WHERE id=$2`,
+      [offerId, marketplaceId]
+    );
+  }
+}
+  if (!nftId || !buyerWallet) return res.json({ ok: true });
     const payloadUUID = p?.payload_uuidv4;
 
     await client.query("BEGIN");
