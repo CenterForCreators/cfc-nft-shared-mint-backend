@@ -136,62 +136,90 @@ app.get("/api/xaman/webhook", (req, res) => {
   res.status(200).send("OK");
 });
 // ------------------------------
-// LIST ON MARKETPLACE (ONE-TIME REGULAR KEY SIGN)
+// LIST ON MARKETPLACE (MANUAL SELL OFFER — NO REGULAR KEY)
 // ------------------------------
 app.post("/api/list-on-marketplace", async (req, res) => {
   try {
-    const { submission_id, wallet } = req.body;
+    const { marketplace_nft_id, currency } = req.body;
 
-    if (!submission_id || !wallet) {
-      return res.status(400).json({ error: "Missing submission_id or wallet" });
+    if (!marketplace_nft_id || !currency) {
+      return res.status(400).json({ error: "Missing marketplace_nft_id or currency" });
     }
 
     const r = await pool.query(
-      "SELECT regular_key_set FROM submissions WHERE id=$1",
-      [submission_id]
+      `
+      SELECT
+        id,
+        nftoken_id,
+        creator_wallet,
+        price_xrp,
+        price_rlusd
+      FROM marketplace_nfts
+      WHERE id = $1
+      `,
+      [marketplace_nft_id]
     );
 
     if (!r.rows.length) {
-      return res.status(404).json({ error: "Submission not found" });
+      return res.status(404).json({ error: "NFT not found" });
     }
 
-    // 🔹 REGULAR KEY NOT SET → OPEN XAMAN (USING WORKING PAYLOAD FORMAT)
-    if (!r.rows[0].regular_key_set) {
-      const payload = {
-        txjson: {
-          TransactionType: "SetRegularKey",
-          Account: wallet,
-          RegularKey: process.env.MARKETPLACE_REGULAR_KEY
-        },
-        options: {
-          submit: true,
-          return_url: {
-            web: "https://centerforcreators.com/nft-creator",
-            app: "https://centerforcreators.com/nft-creator"
-          }
-        }
-      };
+    const nft = r.rows[0];
 
-      const xumm = await axios.post(
-        "https://xumm.app/api/v1/platform/payload",
-        payload,
-        {
-          headers: {
-            "X-API-Key": process.env.XUMM_API_KEY,
-            "X-API-Secret": process.env.XUMM_API_SECRET
-          }
-        }
-      );
-
-      return res.json({ xumm_link: xumm.data.next.always });
+    if (!nft.nftoken_id) {
+      return res.status(400).json({ error: "NFT not minted yet" });
     }
 
-    // 🔹 REGULAR KEY ALREADY SET → CONTINUE
-    return res.json({ ok: true });
+    // Build Amount
+    const Amount =
+      currency === "XRP"
+        ? String(Math.floor(Number(nft.price_xrp) * 1_000_000))
+        : {
+            currency: "524C555344000000000000000000000000000000",
+            issuer: process.env.RLUSD_ISSUER,
+            value: String(nft.price_rlusd)
+          };
+
+    // Create Xaman payload
+    const payload = {
+      txjson: {
+        TransactionType: "NFTokenCreateOffer",
+        Account: nft.creator_wallet,
+        NFTokenID: nft.nftoken_id,
+        Amount,
+        Flags: 1 // sell offer
+      },
+      options: {
+        submit: true,
+        return_url: {
+          web: "https://centerforcreators.com/nft-creator",
+          app: "https://centerforcreators.com/nft-creator"
+        }
+      },
+      custom_meta: {
+        blob: {
+          marketplace_nft_id,
+          currency
+        }
+      }
+    };
+
+    const xumm = await axios.post(
+      "https://xumm.app/api/v1/platform/payload",
+      payload,
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET
+        }
+      }
+    );
+
+    return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
     console.error("list-on-marketplace error:", e?.response?.data || e.message);
-    return res.status(500).json({ error: "Failed to start marketplace listing" });
+    return res.status(500).json({ error: "Failed to list NFT" });
   }
 });
 
@@ -273,88 +301,6 @@ await pool.query(
   ]
 );
    
-
-// 🔹 AUTO CREATE SELL OFFERS USING REGULAR KEY (ADD-ONLY)
-try {
-  const xrplLib = await import("xrpl");
-  const client = new xrplLib.Client(process.env.XRPL_NETWORK);
-  await client.connect();
-
-  const wallet = xrplLib.Wallet.fromSeed(process.env.REGULAR_KEY_SEED);
-
-  const nftRes = await pool.query(
-    "SELECT id, nftoken_id, price_xrp, price_rlusd FROM marketplace_nfts WHERE submission_id=$1",
-    [submission_id]
-  );
-
-  const nft = nftRes.rows[0];
-
-  if (nft?.nftoken_id && nft.price_xrp) {
-    const tx = {
-      TransactionType: "NFTokenCreateOffer",
-      Account: wallet.classicAddress,
-      NFTokenID: nft.nftoken_id,
-      Amount: String(Math.floor(Number(nft.price_xrp) * 1_000_000)),
-      Flags: xrplLib.NFTokenCreateOfferFlags.tfSellNFToken
-    };
-
-    const result = await client.submitAndWait(tx, { wallet });
-
-    const node = result.result.meta.AffectedNodes.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (node) {
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, nft.id]
-      );
-    }
-  }
-
-  if (nft?.nftoken_id && nft.price_rlusd) {
-    const tx = {
-      TransactionType: "NFTokenCreateOffer",
-      Account: wallet.classicAddress,
-      NFTokenID: nft.nftoken_id,
-      Amount: {
-        currency: "524C555344000000000000000000000000000000",
-        issuer: process.env.RLUSD_ISSUER,
-        value: String(nft.price_rlusd)
-      },
-      Flags: xrplLib.NFTokenCreateOfferFlags.tfSellNFToken
-    };
-
-    const result = await client.submitAndWait(tx, { wallet });
-
-    const node = result.result.meta.AffectedNodes.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (node) {
-      await pool.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-        [node.CreatedNode.LedgerIndex, nft.id]
-      );
-    }
-  }
-
-  await client.disconnect();
-} catch (e) {
-  console.error("auto sell-offer error:", e.message);
-}
-
-    // 3️⃣ Clear cache so it appears instantly
-    marketAllCache = { ts: 0, data: null };
-
-    res.json({ ok: true });
-
-  } catch (e) {
-    console.error("add-nft error:", e);
-    res.status(500).json({ error: "Failed to list NFT" });
-  }
-});
-
 // ------------------------------
 // GET ALL NFTs (CACHED — STEP 8A)
 // ------------------------------
