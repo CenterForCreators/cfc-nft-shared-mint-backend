@@ -553,7 +553,23 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const payloadUUID = p?.payload_uuidv4;
 
     await client.query("BEGIN");
+   // Inside /api/xaman/webhook
+if (node.CreatedNode?.LedgerEntryType === "NFTokenOffer") {
+  const ledgerIndex = node.CreatedNode.LedgerIndex;
+  const { marketplace_nft_id, currency } = p.custom_meta.blob;
 
+  if (currency === "XRP") {
+    await client.query(
+      "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+      [ledgerIndex, marketplace_nft_id]
+    );
+  } else if (currency === "RLUSD") {
+    await client.query(
+      "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+      [ledgerIndex, marketplace_nft_id]
+    );
+  }
+}
     const nftRes = await client.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
       [nftId]
