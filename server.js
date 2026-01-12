@@ -300,7 +300,14 @@ await pool.query(
     Number(s.quantity || 1)
   ]
 );
-   
+      res.json({ ok: true });
+
+  } catch (e) {
+    console.error("add-nft error:", e);
+    res.status(500).json({ error: "Failed to add NFT" });
+  }
+});
+ 
 // ------------------------------
 // GET ALL NFTs (CACHED — STEP 8A)
 // ------------------------------
