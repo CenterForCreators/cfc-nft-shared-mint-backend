@@ -212,6 +212,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
   console.error("list-on-marketplace error:", e?.response?.data || e.message);
   return res.status(500).json({ error: "Failed to list NFT" });
 }
+});
 
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
