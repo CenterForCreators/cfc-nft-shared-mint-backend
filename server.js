@@ -240,21 +240,28 @@ app.post("/api/list-on-marketplace", async (req, res) => {
           };
 
     const payload = {
-      txjson: {
-        TransactionType: "NFTokenCreateOffer",
-        Account: nft.creator_wallet,
-        NFTokenID: ledgerNFT.NFTokenID,
-        Amount,
-        Flags: 1
-      },
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-creator",
-          app: "https://centerforcreators.com/nft-creator"
-        }
-      }
-    };
+  txjson: {
+    TransactionType: "NFTokenCreateOffer",
+    Account: nft.creator_wallet,
+    NFTokenID: ledgerNFT.NFTokenID,
+    Amount,
+    Flags: 1
+  },
+  options: {
+    submit: true,
+    return_url: {
+      web: "https://centerforcreators.com/nft-creator",
+      app: "https://centerforcreators.com/nft-creator"
+    }
+  },
+  custom_meta: {
+    blob: {
+      marketplace_nft_id,
+      currency
+    }
+  }
+};
+
 
     const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
