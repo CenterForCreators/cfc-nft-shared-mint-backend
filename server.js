@@ -594,93 +594,6 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
 
 
 // ------------------------------
-// XAMAN WEBHOOK (UNCHANGED)
-// ------------------------------
-app.post("/api/xaman/webhook", async (req, res) => {
-  const client = await pool.connect();
-
-  try {
-    const p = req.body?.payload;
-
-    if (p?.response?.dispatched_result !== "tesSUCCESS" || p?.meta?.signed !== true) {
-      return res.json({ ok: true });
-    }
-
-    const nftId = p?.custom_meta?.blob?.nft_id;
-    const buyerWallet = p?.response?.account;
-    if (!nftId || !buyerWallet) return res.json({ ok: true });
-
-    const txHash = p?.response?.txid;
-    const payloadUUID = p?.payload_uuidv4;
-
-    await client.query("BEGIN");
-   // Inside /api/xaman/webhook
-if (node.CreatedNode?.LedgerEntryType === "NFTokenOffer") {
-  const ledgerIndex = node.CreatedNode.LedgerIndex;
-  const { marketplace_nft_id, currency } = p.custom_meta.blob;
-
-  if (currency === "XRP") {
-    await client.query(
-      "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-      [ledgerIndex, marketplace_nft_id]
-    );
-  } else if (currency === "RLUSD") {
-    await client.query(
-      "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-      [ledgerIndex, marketplace_nft_id]
-    );
-  }
-}
-    const nftRes = await client.query(
-      "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-      [nftId]
-    );
-
-    if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
-      await client.query("ROLLBACK");
-      return res.json({ ok: true });
-    }
-
-    const nft = nftRes.rows[0];
-    const currency = p?.response?.delivered_amount?.currency ? "RLUSD" : "XRP";
-    const price =
-      currency === "RLUSD"
-        ? parsePrice(nft.price_rlusd)
-        : parsePrice(nft.price_xrp);
-
-    const inserted = await client.query(
-      `
-      INSERT INTO orders
-        (marketplace_nft_id, buyer_wallet, price, currency, xumm_payload_uuid, tx_hash)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT DO NOTHING
-      RETURNING id
-      `,
-      [nftId, buyerWallet, price, currency, payloadUUID, txHash]
-    );
-
-    if (inserted.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.json({ ok: true });
-      }
-    await client.query(
-      "UPDATE marketplace_nfts SET quantity=quantity-1, sold_count=sold_count+1 WHERE id=$1",
-      [nftId]
-    );
-
-    await client.query("COMMIT");
-    res.json({ ok: true });
-
-  } catch (e) {
-    await client.query("ROLLBACK");
-    console.error(e);
-    res.status(500).json({ error: "webhook failed" });
-  } finally {
-    client.release();
-  }
-});
-
-// ------------------------------
 // GET ORDERS BY WALLET
 // ------------------------------
 app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
@@ -752,6 +665,84 @@ app.post("/api/orders/redeem", async (req, res) => {
 
 // ------------------------------
 const PORT = process.env.PORT || 5000;
+// ------------------------------
+// XAMAN WEBHOOK — SELL OFFER CAPTURE
+// ------------------------------
+app.post("/api/xaman/webhook", async (req, res) => {
+  try {
+    const payload = req.body;
+
+    if (!payload?.payload_uuidv4) {
+      return res.status(200).end();
+    }
+
+    // Load payload details from Xaman
+    const r = await axios.get(
+      `https://xumm.app/api/v1/platform/payload/${payload.payload_uuidv4}`,
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET
+        }
+      }
+    );
+
+    const meta = r.data?.response;
+    const txid = meta?.txid;
+
+    if (!txid) return res.status(200).end();
+
+    // Fetch validated tx from XRPL
+    const client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
+
+    const tx = await client.request({
+      command: "tx",
+      transaction: txid,
+      binary: false
+    });
+
+    await client.disconnect();
+
+    // Find created NFTokenOffer
+    const node = tx.result.meta.AffectedNodes.find(
+      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+    );
+
+    if (!node) return res.status(200).end();
+
+    const offerIndex = node.CreatedNode.LedgerIndex;
+
+    // Read marketplace_nft_id + currency from payload metadata
+    const marketplace_nft_id =
+      meta.custom_meta?.blob?.marketplace_nft_id;
+    const currency =
+      meta.custom_meta?.blob?.currency;
+
+    if (!marketplace_nft_id || !currency) {
+      return res.status(200).end();
+    }
+
+    // Save sell offer index
+    const column =
+      currency === "XRP"
+        ? "sell_offer_index_xrp"
+        : "sell_offer_index_rlusd";
+
+    await pool.query(
+      `UPDATE marketplace_nfts
+       SET ${column} = $1
+       WHERE id = $2`,
+      [offerIndex, marketplace_nft_id]
+    );
+
+    res.status(200).end();
+
+  } catch (e) {
+    console.error("Xaman webhook error:", e.message);
+    res.status(200).end();
+  }
+});
 
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
