@@ -45,6 +45,10 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+   await pool.query(`
+    ALTER TABLE marketplace_nfts
+    ADD COLUMN IF NOT EXISTS nftoken_id TEXT;
+  `);
   await pool.query(`
     ALTER TABLE marketplace_nfts
     ADD COLUMN IF NOT EXISTS is_delisted BOOLEAN DEFAULT false;
