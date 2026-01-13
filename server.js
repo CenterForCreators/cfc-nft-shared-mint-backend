@@ -147,19 +147,20 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.status(400).json({ error: "Missing marketplace_nft_id or currency" });
     }
 
-    const r = await pool.query(
-      `
-      SELECT
-        id,
-        nftoken_id,
-        creator_wallet,
-        price_xrp,
-        price_rlusd
-      FROM marketplace_nfts
-      WHERE id = $1
-      `,
-      [marketplace_nft_id]
-    );
+   const r = await pool.query(
+  `
+  SELECT
+    id,
+    nftoken_id,
+    creator_wallet,
+    price_xrp,
+    price_rlusd
+  FROM marketplace_nfts
+  WHERE submission_id = $1
+  `,
+  [marketplace_nft_id]
+);
+
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "NFT not found" });
