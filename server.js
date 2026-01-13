@@ -7,6 +7,32 @@ import pg from "pg";
 import dotenv from "dotenv";
 import axios from "axios";
 import xrpl from "xrpl";
+async function pollForSellOffer({
+  client,
+  account,
+  nftokenId,
+  timeoutMs = 15000
+}) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const offers = await client.request({
+      command: "account_objects",
+      account,
+      type: "nft_offer"
+    });
+
+    const found = offers.result.account_objects.find(
+      o => o.NFTokenID === nftokenId && o.Flags === 1
+    );
+
+    if (found?.index) return found.index;
+
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  return null;
+}
 
 dotenv.config();
 const PLATFORM_FEE_PERCENT = 0.05;
@@ -263,33 +289,33 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 };
 
 
-    const xumm = await axios.post(
-      "https://xumm.app/api/v1/platform/payload",
-      payload,
-      {
-        headers: {
-          "X-API-Key": process.env.XUMM_API_KEY,
-          "X-API-Secret": process.env.XUMM_API_SECRET
-        }
-      }
-    );
-
-    return res.json({ link: xumm.data.next.always });
-
-  } catch (e) {
-    console.error("❌ list-on-marketplace fatal:", e?.response?.data || e);
-
-    return res.status(500).json({
-      error: "List on marketplace failed",
-      debug: e?.response?.data || e.message
-    });
-
-  } finally {
-    if (xrplClient) {
-      try { await xrplClient.disconnect(); } catch {}
-    }
-  }
+// ⏳ POLL XRPL FOR SELL OFFER (NO WEBHOOK)
+const sellOfferIndex = await pollForSellOffer({
+  client: xrplClient,
+  account: nft.creator_wallet,
+  nftokenId: ledgerNFT.NFTokenID
 });
+
+if (!sellOfferIndex) {
+  return res.status(500).json({
+    error: "Sell offer created but not found on XRPL"
+  });
+}
+
+// ✅ SAVE SELL OFFER INDEX
+if (currency === "XRP") {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+} else {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+}
+
+return res.json({ link: xumm.data.next.always });
 
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
