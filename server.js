@@ -168,10 +168,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
     const nft = r.rows[0];
 
-    if (!nft.nftoken_id) {
-      return res.status(400).json({ error: "NFT not minted yet" });
-    }
-
+    
     // Build Amount
     const Amount =
       currency === "XRP"
