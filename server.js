@@ -263,8 +263,18 @@ if (!subRes.rows.length) {
 
 const s = subRes.rows[0];
 
-// 2️⃣ Insert ONE marketplace row with batch quantity
-await pool.query(
+// If already added before, return existing marketplace row id
+const existing = await pool.query(
+  "SELECT id FROM marketplace_nfts WHERE submission_id=$1 ORDER BY id DESC LIMIT 1",
+  [submission_id]
+);
+
+if (existing.rows.length) {
+  return res.json({ ok: true, marketplace_nft_id: existing.rows[0].id });
+}
+
+// Insert ONE marketplace row with batch quantity and return its id
+const ins = await pool.query(
   `
   INSERT INTO marketplace_nfts
   (
@@ -284,6 +294,7 @@ await pool.query(
   )
   VALUES
   ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+  RETURNING id
   `,
   [
     s.id,
@@ -300,7 +311,9 @@ await pool.query(
     Number(s.quantity || 1)
   ]
 );
-      res.json({ ok: true });
+
+return res.json({ ok: true, marketplace_nft_id: ins.rows[0].id });
+
 
   } catch (e) {
     console.error("add-nft error:", e);
