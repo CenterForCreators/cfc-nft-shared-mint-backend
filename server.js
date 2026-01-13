@@ -6,6 +6,7 @@ import cors from "cors";
 import pg from "pg";
 import dotenv from "dotenv";
 import axios from "axios";
+import xrpl from "xrpl";
 
 dotenv.config();
 const PLATFORM_FEE_PERCENT = 0.05;
