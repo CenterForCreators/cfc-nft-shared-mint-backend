@@ -141,7 +141,7 @@ app.get("/api/xaman/webhook", (req, res) => {
   res.status(200).send("OK");
 });
 // ------------------------------
-// LIST ON MARKETPLACE (LIVE XRPL LOOKUP — REQUIRED)
+// LIST ON MARKETPLACE (LIVE XRPL LOOKUP — FINAL)
 // ------------------------------
 app.post("/api/list-on-marketplace", async (req, res) => {
   try {
@@ -151,17 +151,18 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.status(400).json({ error: "Missing marketplace_nft_id or currency" });
     }
 
-    // 1️⃣ Load marketplace NFT + metadata CID
+    // Load marketplace NFT row
     const r = await pool.query(
       `
       SELECT
-        m.id,
-        m.creator_wallet,
-        m.metadata_cid,
-        m.price_xrp,
-        m.price_rlusd
-      FROM marketplace_nfts m
-      WHERE m.id = $1
+        id,
+        submission_id,
+        creator_wallet,
+        metadata_cid,
+        price_xrp,
+        price_rlusd
+      FROM marketplace_nfts
+      WHERE id = $1
       `,
       [marketplace_nft_id]
     );
@@ -172,20 +173,20 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
     const nft = r.rows[0];
 
-    // 2️⃣ Fetch NFTokenID LIVE from XRPL
+    // Fetch NFT directly from XRPL
     const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
 
-    const acctNFTs = await xrplClient.request({
+    const acct = await xrplClient.request({
       command: "account_nfts",
       account: nft.creator_wallet
     });
 
-    const expectedURI = xrpl.convertStringToHex(
-      `ipfs://${nft.metadata_cid}`
-    ).toUpperCase();
+    const expectedURI = xrpl
+      .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+      .toUpperCase();
 
-    const ledgerNFT = acctNFTs.result.account_nfts.find(
+    const ledgerNFT = acct.result.account_nfts.find(
       n => n.URI?.toUpperCase() === expectedURI
     );
 
@@ -195,7 +196,6 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.status(400).json({ error: "NFT not found on ledger yet" });
     }
 
-    // 3️⃣ Build Amount
     const Amount =
       currency === "XRP"
         ? String(Math.floor(Number(nft.price_xrp) * 1_000_000))
@@ -205,14 +205,13 @@ app.post("/api/list-on-marketplace", async (req, res) => {
             value: String(nft.price_rlusd)
           };
 
-    // 4️⃣ Create Xaman payload
     const payload = {
       txjson: {
         TransactionType: "NFTokenCreateOffer",
         Account: nft.creator_wallet,
         NFTokenID: ledgerNFT.NFTokenID,
         Amount,
-        Flags: 1 // sell offer
+        Flags: 1
       },
       options: {
         submit: true,
