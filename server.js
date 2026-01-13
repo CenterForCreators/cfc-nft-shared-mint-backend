@@ -268,39 +268,43 @@ const s = subRes.rows[0];
 // 2️⃣ Insert ONE marketplace row with batch quantity
 await pool.query(
   `
-  INSERT INTO marketplace_nfts
-  (
-    submission_id,
-    name,
-    description,
-    category,
-    image_cid,
-    metadata_cid,
-    price_xrp,
-    price_rlusd,
-    creator_wallet,
-    terms,
-    website,
-    quantity,
-    minted
-  )
-  VALUES
-  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+INSERT INTO marketplace_nfts
+(
+  submission_id,
+  nftoken_id,
+  name,
+  description,
+  category,
+  image_cid,
+  metadata_cid,
+  price_xrp,
+  price_rlusd,
+  creator_wallet,
+  terms,
+  website,
+  quantity,
+  minted
+)
+
+ VALUES
+($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)
   `,
   [
-    s.id,
-    s.name,
-    s.description || "",
-    s.category || "all",
-    s.image_cid,
-    s.metadata_cid,
-    s.price_xrp || null,
-    s.price_rlusd || null,
-    s.creator_wallet,
-    s.terms || "",
-    s.website || "",
-    Number(s.quantity || 1)
-  ]
+  s.id,
+  s.nftoken_id,
+  s.name,
+  s.description || "",
+  s.category || "all",
+  s.image_cid,
+  s.metadata_cid,
+  s.price_xrp || null,
+  s.price_rlusd || null,
+  s.creator_wallet,
+  s.terms || "",
+  s.website || "",
+  Number(s.quantity || 1)
+]
+
 );
       res.json({ ok: true });
 
