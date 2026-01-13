@@ -177,42 +177,24 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     const { marketplace_nft_id, currency } = req.body;
 
     if (!marketplace_nft_id || !currency) {
-      return res.status(400).json({
-        error: "Missing marketplace_nft_id or currency",
-        debug: { marketplace_nft_id, currency }
-      });
+      return res.status(400).json({ error: "Missing params" });
     }
 
-    // Load marketplace NFT row
     const r = await pool.query(
       `
-      SELECT
-        id,
-        submission_id,
-        creator_wallet,
-        metadata_cid,
-        price_xrp,
-        price_rlusd
+      SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
       FROM marketplace_nfts
-      WHERE id = $1
+      WHERE id=$1
       `,
       [marketplace_nft_id]
     );
 
     if (!r.rows.length) {
-      return res.status(404).json({
-        error: "Marketplace NFT not found",
-        debug: { marketplace_nft_id }
-      });
+      return res.status(404).json({ error: "Marketplace NFT not found" });
     }
 
     const nft = r.rows[0];
 
-    console.log("🧩 LIST NFT DEBUG");
-    console.log("Creator wallet:", nft.creator_wallet);
-    console.log("Metadata CID:", nft.metadata_cid);
-
-    // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
 
@@ -221,39 +203,16 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       account: nft.creator_wallet
     });
 
-    console.log("XRPL NFT count:", acct.result.account_nfts.length);
-
     const expectedURI = xrpl
       .convertStringToHex(`ipfs://${nft.metadata_cid}`)
       .toUpperCase();
-
-    console.log("Expected URI (hex):", expectedURI);
 
     const ledgerNFT = acct.result.account_nfts.find(
       n => n.URI && n.URI.toUpperCase() === expectedURI
     );
 
-    if (!ledgerNFT) {
-      console.error("❌ NFT NOT FOUND ON LEDGER");
-      return res.status(400).json({
-        error: "NFT not found on XRPL for this wallet + CID",
-        debug: {
-          wallet: nft.creator_wallet,
-          expectedURI,
-          sampleLedgerURIs: acct.result.account_nfts
-            .slice(0, 3)
-            .map(n => n.URI)
-        }
-      });
-    }
-
-    console.log("✅ Ledger NFT found:", ledgerNFT.NFTokenID);
-
-    if (!ledgerNFT.NFTokenID || typeof ledgerNFT.NFTokenID !== "string") {
-      return res.status(400).json({
-        error: "Invalid NFTokenID returned from XRPL",
-        debug: { ledgerNFT }
-      });
+    if (!ledgerNFT?.NFTokenID) {
+      return res.status(400).json({ error: "NFToken not found on XRPL" });
     }
 
     const Amount =
@@ -265,57 +224,48 @@ app.post("/api/list-on-marketplace", async (req, res) => {
             value: String(nft.price_rlusd)
           };
 
-    const payload = {
-  txjson: {
-    TransactionType: "NFTokenCreateOffer",
-    Account: nft.creator_wallet,
-    NFTokenID: ledgerNFT.NFTokenID,
-    Amount,
-    Flags: 1
-  },
-  options: {
-    submit: true,
-    return_url: {
-      web: "https://centerforcreators.com/nft-creator",
-      app: "https://centerforcreators.com/nft-creator"
-    }
-  },
-  custom_meta: {
-    blob: {
-      marketplace_nft_id,
-      currency
+    // 🔹 CREATE SELL OFFER VIA XUMM
+    const xumm = await axios.post(
+      "https://xumm.app/api/v1/platform/payload",
+      {
+        txjson: {
+          TransactionType: "NFTokenCreateOffer",
+          Account: nft.creator_wallet,
+          NFTokenID: ledgerNFT.NFTokenID,
+          Amount,
+          Flags: 1
+        },
+        options: {
+          submit: true,
+          return_url: {
+            web: "https://centerforcreators.com/nft-creator",
+            app: "https://centerforcreators.com/nft-creator"
+          }
+        },
+        custom_meta: {
+          blob: { marketplace_nft_id, currency }
+        }
+      },
+      {
+        headers: {
+          "X-API-Key": process.env.XUMM_API_KEY,
+          "X-API-Secret": process.env.XUMM_API_SECRET
+        }
+      }
+    );
+
+    return res.json({ link: xumm.data.next.always });
+
+  } catch (e) {
+    console.error("list-on-marketplace error:", e);
+    return res.status(500).json({ error: "List failed" });
+  } finally {
+    if (xrplClient) {
+      try { await xrplClient.disconnect(); } catch {}
     }
   }
-};
-
-
-// ⏳ POLL XRPL FOR SELL OFFER (NO WEBHOOK)
-const sellOfferIndex = await pollForSellOffer({
-  client: xrplClient,
-  account: nft.creator_wallet,
-  nftokenId: ledgerNFT.NFTokenID
 });
 
-if (!sellOfferIndex) {
-  return res.status(500).json({
-    error: "Sell offer created but not found on XRPL"
-  });
-}
-
-// ✅ SAVE SELL OFFER INDEX
-if (currency === "XRP") {
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-    [sellOfferIndex, marketplace_nft_id]
-  );
-} else {
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-    [sellOfferIndex, marketplace_nft_id]
-  );
-}
-
-return res.json({ link: xumm.data.next.always });
 
 // ------------------------------
 // ADD NFT FROM CREATOR (AFTER MINT)
