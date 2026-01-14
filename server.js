@@ -160,45 +160,34 @@ app.use(express.json());
 app.use(cors());
 
 // ------------------------------
-app.get("/", (_, res) => {
-  res.send("CFC Marketplace backend running");
-});
-// ✅ WEBHOOK HEALTH CHECK (ADD-ONLY)
-app.get("/api/xaman/webhook", (req, res) => {
-  res.status(200).send("OK");
-});
 // ------------------------------
-// LIST ON MARKETPLACE (XRPL TRACE SAFE)
+// LIST ON MARKETPLACE (FINAL — POLLING ONLY)
 // ------------------------------
 app.post("/api/list-on-marketplace", async (req, res) => {
-  let xrplClient;
+  let client;
 
   try {
     const { marketplace_nft_id, currency } = req.body;
-
     if (!marketplace_nft_id || !currency) {
       return res.status(400).json({ error: "Missing params" });
     }
 
     const r = await pool.query(
-      `
-      SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
-      FROM marketplace_nfts
-      WHERE id=$1
-      `,
+      `SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
+       FROM marketplace_nfts
+       WHERE id = $1`,
       [marketplace_nft_id]
     );
-
     if (!r.rows.length) {
       return res.status(404).json({ error: "Marketplace NFT not found" });
     }
 
     const nft = r.rows[0];
 
-    xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
-    await xrplClient.connect();
+    client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
 
-    const acct = await xrplClient.request({
+    const acct = await client.request({
       command: "account_nfts",
       account: nft.creator_wallet
     });
@@ -208,7 +197,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       .toUpperCase();
 
     const ledgerNFT = acct.result.account_nfts.find(
-      n => n.URI && n.URI.toUpperCase() === expectedURI
+      n => n.URI?.toUpperCase() === expectedURI
     );
 
     if (!ledgerNFT?.NFTokenID) {
@@ -224,7 +213,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
             value: String(nft.price_rlusd)
           };
 
-    // 🔹 CREATE SELL OFFER VIA XUMM
+    // 1️⃣ Create sell offer via Xaman
     const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
       {
@@ -241,9 +230,6 @@ app.post("/api/list-on-marketplace", async (req, res) => {
             web: "https://centerforcreators.com/nft-creator",
             app: "https://centerforcreators.com/nft-creator"
           }
-        },
-        custom_meta: {
-          blob: { marketplace_nft_id, currency }
         }
       },
       {
@@ -254,14 +240,55 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       }
     );
 
+    // 2️⃣ Poll XRPL for created sell offer
+    let sellOfferIndex = null;
+
+    for (let i = 0; i < 12; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+
+      const offers = await client.request({
+        command: "account_objects",
+        account: nft.creator_wallet,
+        type: "nft_offer"
+      });
+
+      const offer = offers.result.account_objects.find(
+        o =>
+          o.NFTokenID === ledgerNFT.NFTokenID &&
+          o.Flags === 1
+      );
+
+      if (offer) {
+        sellOfferIndex = offer.index;
+        break;
+      }
+    }
+
+    if (!sellOfferIndex) {
+      return res.status(500).json({ error: "Sell offer not found on XRPL" });
+    }
+
+    // 3️⃣ Save sell offer index (THIS IS WHAT MAKES PAY BUTTONS WORK)
+    if (currency === "XRP") {
+      await pool.query(
+        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+        [sellOfferIndex, marketplace_nft_id]
+      );
+    } else {
+      await pool.query(
+        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+        [sellOfferIndex, marketplace_nft_id]
+      );
+    }
+
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
     console.error("list-on-marketplace error:", e);
     return res.status(500).json({ error: "List failed" });
   } finally {
-    if (xrplClient) {
-      try { await xrplClient.disconnect(); } catch {}
+    if (client) {
+      try { await client.disconnect(); } catch {}
     }
   }
 });
