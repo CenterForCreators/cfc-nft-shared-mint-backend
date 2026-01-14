@@ -678,7 +678,7 @@ const PORT = process.env.PORT || 5000;
 
 
 // ------------------------------
-// XAMAN WEBHOOK (SELL OFFER CAPTURE — FIXED)
+// XAMAN WEBHOOK (PURCHASE ONLY — QUANTITY SAFE)
 // ------------------------------
 app.post("/api/xaman/webhook", async (req, res) => {
   const client = await pool.connect();
@@ -693,42 +693,68 @@ app.post("/api/xaman/webhook", async (req, res) => {
       return res.json({ ok: true });
     }
 
-    const meta = p?.response?.meta;
     const blob = p?.custom_meta?.blob;
+    const txid = p?.response?.txid;
+    const buyer = p?.response?.account;
 
-    if (!meta?.affected_nodes || !blob?.marketplace_nft_id) {
+    if (!txid || !blob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
 
-    let sellOfferIndex = null;
+    await client.query("BEGIN");
 
-    for (const n of meta.affected_nodes) {
-      const node = n.CreatedNode;
-      if (node?.LedgerEntryType === "NFTokenOffer") {
-        sellOfferIndex = node.LedgerIndex;
-        break;
-      }
-    }
+    // 🔹 LOCK NFT ROW
+    const nftRes = await client.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
+      [blob.nft_id]
+    );
 
-    if (!sellOfferIndex) {
+    if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
+      await client.query("ROLLBACK");
       return res.json({ ok: true });
     }
 
-    if (blob.currency === "XRP") {
-      await client.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-        [sellOfferIndex, blob.marketplace_nft_id]
-      );
-    } else if (blob.currency === "RLUSD") {
-      await client.query(
-        "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-        [sellOfferIndex, blob.marketplace_nft_id]
-      );
+    const nft = nftRes.rows[0];
+
+    // 🔹 RECORD ORDER (idempotent)
+    const inserted = await client.query(
+      `
+      INSERT INTO orders
+        (marketplace_nft_id, buyer_wallet, price, currency, tx_hash)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT DO NOTHING
+      RETURNING id
+      `,
+      [
+        nft.id,
+        buyer,
+        blob.currency === "RLUSD" ? nft.price_rlusd : nft.price_xrp,
+        blob.currency,
+        txid
+      ]
+    );
+
+    if (inserted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true });
     }
 
+    // ✅ DECREMENT QUANTITY **ONLY ON PURCHASE**
+    await client.query(
+      `
+      UPDATE marketplace_nfts
+      SET quantity = quantity - 1,
+          sold_count = sold_count + 1
+      WHERE id = $1
+      `,
+      [nft.id]
+    );
+
+    await client.query("COMMIT");
     res.json({ ok: true });
 
   } catch (e) {
+    await client.query("ROLLBACK");
     console.error("❌ webhook error:", e);
     res.status(500).json({ error: "webhook failed" });
   } finally {
