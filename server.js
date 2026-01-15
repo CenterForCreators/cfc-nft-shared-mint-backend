@@ -1,6 +1,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -402,7 +403,7 @@ app.get("/api/market/all", async (_, res) => {
   WHERE minted = true
     AND sold = false
     AND COALESCE(is_delisted, false) = false
- ORDER BY display_order ASC
+  ORDER BY created_at DESC
 `);
 
     marketAllCache = { ts: now, data: r.rows };
