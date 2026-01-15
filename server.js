@@ -402,7 +402,7 @@ app.get("/api/market/all", async (_, res) => {
   WHERE minted = true
     AND sold = false
     AND COALESCE(is_delisted, false) = false
-  ORDER BY created_at DESC
+ ORDER BY display_order ASC, created_at DESC
 `);
 
     marketAllCache = { ts: now, data: r.rows };
