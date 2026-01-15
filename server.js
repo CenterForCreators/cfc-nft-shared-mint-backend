@@ -17,15 +17,16 @@ async function pollForSellOffer({
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
-    const offers = await client.request({
-      command: "account_objects",
-      account,
-      type: "nft_offer"
-    });
+   
+const offers = await client.request({
+  command: "nft_sell_offers",
+  nft_id: ledgerNFT.NFTokenID
+});
 
-    const found = offers.result.account_objects.find(
-      o => o.NFTokenID === nftokenId && o.Flags === 1
-    );
+if (offers.result?.offers?.length) {
+  sellOfferIndex = offers.result.offers[0].nft_offer_index;
+  break;
+}
 
     if (found?.index) return found.index;
 
