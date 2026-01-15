@@ -252,6 +252,39 @@ app.post("/api/list-on-marketplace", async (req, res) => {
         }
       }
     );
+// ⏳ POLL XRPL FOR CREATED SELL OFFER
+let sellOfferIndex = null;
+
+for (let i = 0; i < 12; i++) {
+  await new Promise(r => setTimeout(r, 2000));
+
+  const offers = await xrplClient.request({
+    command: "nft_sell_offers",
+    nft_id: ledgerNFT.NFTokenID
+  });
+
+  if (offers.result?.offers?.length) {
+    sellOfferIndex = offers.result.offers[0].nft_offer_index;
+    break;
+  }
+}
+
+if (!sellOfferIndex) {
+  return res.status(500).json({ error: "Sell offer not found on XRPL" });
+}
+
+// ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS PAY BUTTONS)
+if (currency === "XRP") {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+} else {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+}
 
     return res.json({ link: xumm.data.next.always });
 
