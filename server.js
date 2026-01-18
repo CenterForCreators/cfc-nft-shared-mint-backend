@@ -2,6 +2,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -268,9 +269,9 @@ for (let i = 0; i < 12; i++) {
     break;
   }
 }
+
 if (!sellOfferIndex) {
-  // sell offer may still be created; do not block UI
-  return res.json({ link: xumm.data.next.always });
+  return res.status(500).json({ error: "Sell offer not found on XRPL" });
 }
 
 // ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS PAY BUTTONS)
