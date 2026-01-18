@@ -268,9 +268,9 @@ for (let i = 0; i < 12; i++) {
     break;
   }
 }
-
 if (!sellOfferIndex) {
-  return res.status(500).json({ error: "Sell offer not found on XRPL" });
+  // sell offer may still be created; do not block UI
+  return res.json({ link: xumm.data.next.always });
 }
 
 // ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS PAY BUTTONS)
