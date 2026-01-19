@@ -254,6 +254,39 @@ app.post("/api/list-on-marketplace", async (req, res) => {
         }
       }
     );
+// ⏳ POLL XRPL FOR CREATED SELL OFFER
+let sellOfferIndex = null;
+
+for (let i = 0; i < 12; i++) {
+  await new Promise(r => setTimeout(r, 2000));
+
+  const offers = await xrplClient.request({
+    command: "nft_sell_offers",
+    nft_id: ledgerNFT.NFTokenID
+  });
+
+  if (offers.result?.offers?.length) {
+    sellOfferIndex = offers.result.offers[0].nft_offer_index;
+    break;
+  }
+}
+
+if (!sellOfferIndex) {
+  return res.status(500).json({ error: "Sell offer not found on XRPL" });
+}
+
+// ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS PAY BUTTONS)
+if (currency === "XRP") {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+} else {
+  await pool.query(
+    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+    [sellOfferIndex, marketplace_nft_id]
+  );
+}
 
     return res.json({ link: xumm.data.next.always });
 
@@ -543,12 +576,12 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
       options: {
         submit: true
       },
-     custom_meta: {
-  blob: {
-    marketplace_nft_id,
-    currency
-  }
-}
+      custom_meta: {
+        blob: {
+          marketplace_id: nft.id,
+          currency
+        }
+      }
     };
 
     const xumm = await axios.post(
@@ -662,64 +695,20 @@ app.post("/api/xaman/webhook", async (req, res) => {
     }
 
     const blob = p?.custom_meta?.blob;
-const txid = p?.response?.txid;
-const buyer = p?.response?.account;
-   // ✅ SELL-OFFER SAVE (runs when listing payload returns via Xaman)
-if (txid && blob?.marketplace_nft_id && blob?.currency) {
-  try {
-    const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
-    await xrplClient.connect();
+    const txid = p?.response?.txid;
+    const buyer = p?.response?.account;
 
-    const tx = await xrplClient.request({
-      command: "tx",
-      transaction: txid,
-      binary: false
-    });
-
-    await xrplClient.disconnect();
-
-    const offerNode = tx.result?.meta?.AffectedNodes?.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    const ledgerIndex = offerNode?.CreatedNode?.LedgerIndex;
-
-    if (ledgerIndex) {
-      if (blob.currency === "XRP") {
-        await client.query(
-          "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-          [ledgerIndex, blob.marketplace_nft_id]
-        );
-      } else if (blob.currency === "RLUSD") {
-        await client.query(
-          "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-          [ledgerIndex, blob.marketplace_nft_id]
-        );
-      }
+    if (!txid || !blob?.nft_id || !buyer) {
+      return res.json({ ok: true });
     }
-
-    return res.json({ ok: true, listed: true });
-  } catch (e) {
-    console.error("❌ sell-offer webhook save failed:", e?.response?.data || e.message);
-    return res.json({ ok: true });
-  }
-} 
-
-// ✅ FIX B — accept marketplace_nft_id
-const marketplaceNftId = blob?.marketplace_nft_id;
-
-if (!txid || !marketplaceNftId || !buyer) {
-  return res.json({ ok: true });
-}
-
 
     await client.query("BEGIN");
 
-  // 🔹 LOCK NFT ROW
-const nftRes = await client.query(
-  "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-  [marketplaceNftId]
-);
+    // 🔹 LOCK NFT ROW
+    const nftRes = await client.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
+      [blob.nft_id]
+    );
 
     if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
       await client.query("ROLLBACK");
