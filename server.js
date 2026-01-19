@@ -169,7 +169,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
   let xrplClient;
 
   try {
-    const { marketplace_nft_id, currency } = req.body;
+   const { submission_id, currency } = req.body;
 
     if (!marketplace_nft_id || !currency) {
       return res.status(400).json({ error: "Missing params" });
@@ -179,7 +179,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       `
       SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
       FROM marketplace_nfts
-      WHERE id=$1
+WHERE submission_id=$1
       `,
       [marketplace_nft_id]
     );
@@ -241,7 +241,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
         },
         custom_meta: {
           blob: {
-            marketplace_nft_id,
+            nft.id
             currency
           }
         }
@@ -577,7 +577,7 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
       },
       custom_meta: {
         blob: {
-          marketplace_id: nft.id,
+          nft.id
           currency
         }
       }
