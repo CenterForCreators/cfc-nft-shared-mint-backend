@@ -543,12 +543,12 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
       options: {
         submit: true
       },
-      custom_meta: {
-        blob: {
-          marketplace_id: nft.id,
-          currency
-        }
-      }
+     custom_meta: {
+  blob: {
+    marketplace_nft_id,
+    currency
+  }
+}
     };
 
     const xumm = await axios.post(
