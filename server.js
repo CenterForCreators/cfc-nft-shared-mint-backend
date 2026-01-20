@@ -5,6 +5,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -300,13 +301,7 @@ if (currency === "XRP") {
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    console.error("list-on-marketplace error FULL:", {
-  message: e?.message,
-  responseData: e?.response?.data,
-  responseStatus: e?.response?.status,
-  raw: e
-});
-
+    console.error("list-on-marketplace error:", e?.response?.data || e.message);
     return res.status(500).json({ error: "List failed" });
   } finally {
     if (xrplClient) {
