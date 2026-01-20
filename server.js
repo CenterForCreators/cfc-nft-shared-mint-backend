@@ -698,16 +698,18 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const txid = p?.response?.txid;
     const buyer = p?.response?.account;
 
-    if (!txid || !blob?.nft_id || !buyer) {
-      return res.json({ ok: true });
-    }
+  const marketplaceNftId = blob?.marketplace_nft_id;
+
+if (!txid || !marketplaceNftId || !buyer) {
+  return res.json({ ok: true });
+} 
 
     await client.query("BEGIN");
 
     // 🔹 LOCK NFT ROW
     const nftRes = await client.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-      [blob.nft_id]
+    [marketplaceNftId] 
     );
 
     if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
