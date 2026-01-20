@@ -4,6 +4,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -241,11 +242,11 @@ app.post("/api/list-on-marketplace", async (req, res) => {
           }
         },
         custom_meta: {
-          blob: {
-            marketplace_nft_id,
-            currency
-          }
-        }
+  blob: {
+    marketplace_nft_id: marketplace_nft_id,
+    currency
+  }
+}
       },
       {
         headers: {
@@ -577,11 +578,11 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
         submit: true
       },
       custom_meta: {
-        blob: {
-          marketplace_id: nft.id,
-          currency
-        }
-      }
+  blob: {
+    marketplace_nft_id: marketplace_nft_id,
+    currency
+  }
+}
     };
 
     const xumm = await axios.post(
