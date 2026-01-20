@@ -4,6 +4,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -698,18 +699,16 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const txid = p?.response?.txid;
     const buyer = p?.response?.account;
 
-  const marketplaceNftId = blob?.marketplace_nft_id;
-
-if (!txid || !marketplaceNftId || !buyer) {
-  return res.json({ ok: true });
-} 
+    if (!txid || !blob?.nft_id || !buyer) {
+      return res.json({ ok: true });
+    }
 
     await client.query("BEGIN");
 
     // 🔹 LOCK NFT ROW
     const nftRes = await client.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-    [marketplaceNftId] 
+      [blob.nft_id]
     );
 
     if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
