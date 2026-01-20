@@ -261,12 +261,20 @@ let sellOfferIndex = null;
 for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: ledgerNFT.NFTokenID
-  });
+  let offers;
+  try {
+    offers = await xrplClient.request({
+      command: "nft_sell_offers",
+      nft_id: ledgerNFT.NFTokenID
+    });
+  } catch (err) {
+    // XRPL returns "notFound" until the offer actually exists — keep polling.
+    const msg = err?.data?.error || err?.message;
+    if (msg === "notFound") continue;
+    throw err;
+  }
 
-  if (offers.result?.offers?.length) {
+  if (offers?.result?.offers?.length) {
     sellOfferIndex = offers.result.offers[0].nft_offer_index;
     break;
   }
