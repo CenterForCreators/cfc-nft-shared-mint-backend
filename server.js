@@ -303,92 +303,74 @@ if (currency === "XRP") {
 
 
 // ------------------------------
-// ADD NFT FROM CREATOR (AFTER MINT)
+// ADD NFT FROM CREATOR (AFTER MINT) — FIXED
 // ------------------------------
-
 app.post("/api/add-nft", async (req, res) => {
   try {
-    const { submission_id } = req.body;
+    const {
+      submission_id,
+      name,
+      description,
+      category,
+      image_cid,
+      metadata_cid,
+      price_xrp,
+      price_rlusd,
+      creator_wallet,
+      terms,
+      website,
+      quantity
+    } = req.body;
 
-    if (!submission_id) {
-      return res.status(400).json({ error: "submission_id required" });
+    if (!submission_id || !name || !metadata_cid || !creator_wallet) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-const subRes = await pool.query(
-  `
-  SELECT
-    id,
-    name,
-    description,
-    category,
-    image_cid,
-    metadata_cid,
-    price_xrp,
-    price_rlusd,
-    creator_wallet,
-    terms,
-    website,
-    batch_qty AS quantity
-  FROM submissions
-  WHERE id = $1
-  `,
-  [submission_id]
-);
+    await pool.query(
+      `
+      INSERT INTO marketplace_nfts
+      (
+        submission_id,
+        name,
+        description,
+        category,
+        image_cid,
+        metadata_cid,
+        price_xrp,
+        price_rlusd,
+        creator_wallet,
+        terms,
+        website,
+        quantity,
+        minted
+      )
+      VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+      ON CONFLICT DO NOTHING
+      `,
+      [
+        submission_id,
+        name,
+        description || "",
+        category || "all",
+        image_cid || null,
+        metadata_cid,
+        price_xrp || null,
+        price_rlusd || null,
+        creator_wallet,
+        terms || "",
+        website || "",
+        Number(quantity || 1)
+      ]
+    );
 
-if (!subRes.rows.length) {
-  return res.status(404).json({ error: "Submission not found" });
-}
-
-const s = subRes.rows[0];
-
-// 2️⃣ Insert ONE marketplace row with batch quantity
-await pool.query(
-  `
-INSERT INTO marketplace_nfts
-(
-  submission_id,
-  nftoken_id,
-  name,
-  description,
-  category,
-  image_cid,
-  metadata_cid,
-  price_xrp,
-  price_rlusd,
-  creator_wallet,
-  terms,
-  website,
-  quantity,
-  minted
-)
-
- VALUES
-($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)
-  `,
-  [
-  s.id,
-  s.nftoken_id,
-  s.name,
-  s.description || "",
-  s.category || "all",
-  s.image_cid,
-  s.metadata_cid,
-  s.price_xrp || null,
-  s.price_rlusd || null,
-  s.creator_wallet,
-  s.terms || "",
-  s.website || "",
-  Number(s.quantity || 1)
-]
-
-);
-      res.json({ ok: true });
-
+    res.json({ ok: true });
   } catch (e) {
     console.error("add-nft error:", e);
     res.status(500).json({ error: "Failed to add NFT" });
   }
 });
+
  
 // ------------------------------
 // GET ALL NFTs (CACHED — STEP 8A)
