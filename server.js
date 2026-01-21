@@ -173,6 +173,7 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
   try {
     const { marketplace_nft_id, currency } = req.body;
+    console.log("LIST DEBUG currency =", currency);
 
     if (!marketplace_nft_id || !currency) {
       return res.status(400).json({ error: "Missing params" });
