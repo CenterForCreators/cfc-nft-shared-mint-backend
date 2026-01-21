@@ -261,47 +261,6 @@ const ledgerNFT = matching[matching.length - 1];
         }
       }
     );
-// ⏳ POLL XRPL FOR CREATED SELL OFFER
-let sellOfferIndex = null;
-
-for (let i = 0; i < 12; i++) {
-  await new Promise(r => setTimeout(r, 2000));
-
-  let offers;
-  try {
-    offers = await xrplClient.request({
-      command: "nft_sell_offers",
-      nft_id: ledgerNFT.NFTokenID
-    });
-  } catch (err) {
-    // XRPL returns "notFound" until the offer actually exists — keep polling.
-    const msg = err?.data?.error || err?.message;
-    if (msg === "notFound") continue;
-    throw err;
-  }
-
-  if (offers?.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
-  }
-}
-
-if (!sellOfferIndex) {
-  return res.status(500).json({ error: "Sell offer not found on XRPL" });
-}
-
-// ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS PAY BUTTONS)
-if (currency === "XRP") {
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-    [sellOfferIndex, marketplace_nft_id]
-  );
-} else {
-  await pool.query(
-    "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-    [sellOfferIndex, marketplace_nft_id]
-  );
-}
 
     return res.json({ link: xumm.data.next.always });
 
