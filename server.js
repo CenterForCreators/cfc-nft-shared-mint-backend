@@ -7,6 +7,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -197,23 +198,6 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
-// Find NFT on ledger by CID
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
-
-const expectedURI = xrpl
-  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
-  .toUpperCase();
-
-const ledgerNFT = acct.result.account_nfts.find(
-  n => n.URI && n.URI.toUpperCase() === expectedURI
-);
-
-if (!ledgerNFT?.NFTokenID) {
-  return res.status(400).json({ error: "NFToken not found on XRPL" });
-}
 
    // 🔹 SELECT NEXT UNUSED NFTokenID (BATCH-SAFE)
 const acct = await xrplClient.request({
