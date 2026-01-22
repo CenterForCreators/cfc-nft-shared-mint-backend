@@ -313,7 +313,14 @@ await pool.query(
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    console.error("list-on-marketplace error:", e?.response?.data || e.message);
+    console.error("LIST ERROR FULL:", {
+  message: e?.message,
+  data: e?.data,
+  responseData: e?.response?.data,
+  responseStatus: e?.response?.status,
+  stack: e?.stack
+});
+
     return res.status(500).json({ error: "List failed" });
   } finally {
     if (xrplClient) {
