@@ -210,11 +210,21 @@ const sub = await pool.query(
 if (!sub.rows.length || !sub.rows[0].nftoken_ids) {
   return res.status(400).json({ error: "No NFTokenIDs available" });
 }
-
 const ids = JSON.parse(sub.rows[0].nftoken_ids);
 
-// use the FIRST token (matches prior working behavior)
-const nftokenId = ids[0];
+if (!ids.length) {
+  return res.status(400).json({ error: "No NFTokenIDs available" });
+}
+
+// take ONE token for this listing
+const nftokenId = ids.shift();
+
+// persist remaining tokens (append-only behavior preserved)
+await pool.query(
+  "UPDATE submissions SET nftoken_ids=$1 WHERE id=(SELECT submission_id FROM marketplace_nfts WHERE id=$2)",
+  [JSON.stringify(ids), marketplace_nft_id]
+);
+
 
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
