@@ -278,7 +278,7 @@ const ledgerNFT = { NFTokenID: nextNFTokenID };
 // ⏳ POLL XRPL FOR CREATED SELL OFFER
 let sellOfferIndex = null;
 
-for (let i = 0; i < 12; i++) {
+for (let i = 0; i < 30; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
   let offers;
