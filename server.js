@@ -173,9 +173,9 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
     const r = await pool.query(
       `
-      SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
-      FROM marketplace_nfts
-      WHERE id=$1
+    SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd, nftoken_id
+FROM marketplace_nfts
+WHERE id=$1
       `,
       [marketplace_nft_id]
     );
@@ -233,32 +233,7 @@ const ledgerNFT = { NFTokenID: nft.nftoken_id };
         }
       }
     );
-// ⏳ POLL XRPL FOR CREATED SELL OFFER (PROVEN WORKING)
-let sellOfferIndex = null;
 
-for (let i = 0; i < 12; i++) {
-  await new Promise(r => setTimeout(r, 2000));
-
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: ledgerNFT.NFTokenID
-  });
-
-  if (offers.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
-  }
-}
-
-if (!sellOfferIndex) {
-  return res.status(500).json({ error: "Sell offer not found on XRPL" });
-}
-
-// ✅ SAVE SELL OFFER INDEX (THIS UNBLOCKS UI)
-await pool.query(
-  "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-  [sellOfferIndex, marketplace_nft_id]
-);
 
     return res.json({ link: xumm.data.next.always });
 
