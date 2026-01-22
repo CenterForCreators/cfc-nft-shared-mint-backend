@@ -195,26 +195,25 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     }
 
     const nft = r.rows[0];
+// 🔹 LOAD NEXT UNUSED NFTOKEN ID FROM SUBMISSION
+const sub = await pool.query(
+  "SELECT nftoken_ids FROM submissions WHERE id=$1",
+  [marketplace_nft_id]
+);
+
+if (!sub.rows.length || !sub.rows[0].nftoken_ids) {
+  return res.status(400).json({ error: "No NFTokenIDs available" });
+}
+
+const ids = JSON.parse(sub.rows[0].nftoken_ids);
+
+// use the FIRST token (matches prior working behavior)
+const nftokenId = ids[0];
 
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
-// Find NFT on ledger by CID
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
 
-const expectedURI = xrpl
-  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
-  .toUpperCase();
-const matching = acct.result.account_nfts.filter(
-  n => n.URI && n.URI.toUpperCase() === expectedURI
-);
-
-if (!matching.length) {
-  return res.status(400).json({ error: "No matching NFTs found on XRPL" });
-}
 
 // pick the newest token (last minted)
 const ledgerNFT = matching[matching.length - 1];
@@ -235,7 +234,7 @@ const ledgerNFT = matching[matching.length - 1];
         txjson: {
           TransactionType: "NFTokenCreateOffer",
           Account: nft.creator_wallet,
-          NFTokenID: ledgerNFT.NFTokenID,
+         NFTokenID: nftokenId,
           Amount,
           Flags: 1
         },
