@@ -171,15 +171,14 @@ app.post("/api/list-on-marketplace", async (req, res) => {
       return res.status(400).json({ error: "Missing params" });
     }
 
-  const r = await pool.query(
-  `
-  SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd, nftoken_id
-  FROM marketplace_nfts
-  WHERE id=$1
-  `,
-  [marketplace_nft_id]
-);
-
+    const r = await pool.query(
+      `
+      SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd
+      FROM marketplace_nfts
+      WHERE id=$1
+      `,
+      [marketplace_nft_id]
+    );
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Marketplace NFT not found" });
@@ -190,12 +189,23 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
-// Use stored NFTokenID (batch-safe)
-if (!nft.nftoken_id) {
-  return res.status(400).json({ error: "No NFTokenID stored for this NFT" });
-}
+// Find NFT on ledger by CID
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
 
-const ledgerNFT = { NFTokenID: nft.nftoken_id };
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
+
+const ledgerNFT = acct.result.account_nfts.find(
+  n => n.URI && n.URI.toUpperCase() === expectedURI
+);
+
+if (!ledgerNFT?.NFTokenID) {
+  return res.status(400).json({ error: "NFToken not found on XRPL" });
+}
 
     const Amount =
       currency === "XRP"
@@ -244,18 +254,14 @@ let sellOfferIndex = null;
 for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
-  try {
-    const offers = await xrplClient.request({
-      command: "nft_sell_offers",
-      nft_id: ledgerNFT.NFTokenID
-    });
+  const offers = await xrplClient.request({
+    command: "nft_sell_offers",
+    nft_id: ledgerNFT.NFTokenID
+  });
 
-    if (offers.result?.offers?.length) {
-      sellOfferIndex = offers.result.offers[0].nft_offer_index;
-      break;
-    }
-  } catch (e) {
-    // XRPL returns "notFound" briefly after signing — this is OK
+  if (offers.result?.offers?.length) {
+    sellOfferIndex = offers.result.offers[0].nft_offer_index;
+    break;
   }
 }
 
