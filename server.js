@@ -195,43 +195,27 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     }
 
     const nft = r.rows[0];
-// 🔹 LOAD NEXT UNUSED NFTOKEN ID FROM SUBMISSION
-
-const sub = await pool.query(
-  `
-  SELECT s.nftoken_ids
-  FROM submissions s
-  JOIN marketplace_nfts m ON m.submission_id = s.id
-  WHERE m.id = $1
-  `,
-  [marketplace_nft_id]
-);
-
-if (!sub.rows.length || !sub.rows[0].nftoken_ids) {
-  return res.status(400).json({ error: "No NFTokenIDs available" });
-}
-const ids = JSON.parse(sub.rows[0].nftoken_ids);
-
-if (!ids.length) {
-  return res.status(400).json({ error: "No NFTokenIDs available" });
-}
-
-// take ONE token for this listing
-const nftokenId = ids.shift();
-
-// persist remaining tokens (append-only behavior preserved)
-await pool.query(
-  "UPDATE submissions SET nftoken_ids=$1 WHERE id=(SELECT submission_id FROM marketplace_nfts WHERE id=$2)",
-  [JSON.stringify(ids), marketplace_nft_id]
-);
-
 
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
+// Find NFT on ledger by CID
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
 
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
 
-// pick the newest token (last minted)
+const ledgerNFT = acct.result.account_nfts.find(
+  n => n.URI && n.URI.toUpperCase() === expectedURI
+);
+
+if (!ledgerNFT?.NFTokenID) {
+  return res.status(400).json({ error: "NFToken not found on XRPL" });
+}
 
     const Amount =
       currency === "XRP"
@@ -249,7 +233,7 @@ await pool.query(
         txjson: {
           TransactionType: "NFTokenCreateOffer",
           Account: nft.creator_wallet,
-         NFTokenID: nftokenId,
+          NFTokenID: ledgerNFT.NFTokenID,
           Amount,
           Flags: 1
         },
@@ -281,9 +265,9 @@ for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
   const offers = await xrplClient.request({
-  command: "nft_sell_offers",
-  nft_id: nftokenId
-});
+    command: "nft_sell_offers",
+    nft_id: ledgerNFT.NFTokenID
+  });
 
   if (offers.result?.offers?.length) {
     sellOfferIndex = offers.result.offers[0].nft_offer_index;
