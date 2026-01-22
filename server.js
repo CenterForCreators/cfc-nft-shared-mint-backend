@@ -216,7 +216,6 @@ const nftokenId = ids[0];
 
 
 // pick the newest token (last minted)
-const ledgerNFT = matching[matching.length - 1];
 
     const Amount =
       currency === "XRP"
@@ -266,9 +265,9 @@ for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
   const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: ledgerNFT.NFTokenID
-  });
+  command: "nft_sell_offers",
+  nft_id: nftokenId
+});
 
   if (offers.result?.offers?.length) {
     sellOfferIndex = offers.result.offers[0].nft_offer_index;
