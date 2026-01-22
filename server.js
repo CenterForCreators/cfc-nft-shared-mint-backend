@@ -208,13 +208,30 @@ const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
   .toUpperCase();
 
-const ledgerNFT = acct.result.account_nfts.find(
-  n => n.URI && n.URI.toUpperCase() === expectedURI
+// 🔹 SELECT NEXT UNUSED NFTokenID (ORDERED, SAFE)
+const matching = acct.result.account_nfts
+  .filter(n => n.URI && n.URI.toUpperCase() === expectedURI)
+  .map(n => n.NFTokenID);
+
+if (!matching.length) {
+  return res.status(400).json({ error: "No matching NFTs found on XRPL" });
+}
+
+// how many have already been sold/listed
+const usedCountRes = await pool.query(
+  `SELECT sold_count FROM marketplace_nfts WHERE id=$1`,
+  [marketplace_nft_id]
 );
 
-if (!ledgerNFT?.NFTokenID) {
-  return res.status(400).json({ error: "NFToken not found on XRPL" });
+const usedCount = Number(usedCountRes.rows[0]?.sold_count || 0);
+
+const nextNFTokenID = matching[usedCount];
+
+if (!nextNFTokenID) {
+  return res.status(400).json({ error: "No unused NFTokenID remaining" });
 }
+
+const ledgerNFT = { NFTokenID: nextNFTokenID };
 
     const Amount =
       currency === "XRP"
