@@ -8,6 +8,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -208,30 +209,13 @@ const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
   .toUpperCase();
 
-// 🔹 SELECT NEXT UNUSED NFTokenID (ORDERED, SAFE)
-const matching = acct.result.account_nfts
-  .filter(n => n.URI && n.URI.toUpperCase() === expectedURI)
-  .map(n => n.NFTokenID);
-
-if (!matching.length) {
-  return res.status(400).json({ error: "No matching NFTs found on XRPL" });
-}
-
-// how many have already been sold/listed
-const usedCountRes = await pool.query(
-  `SELECT sold_count FROM marketplace_nfts WHERE id=$1`,
-  [marketplace_nft_id]
+const ledgerNFT = acct.result.account_nfts.find(
+  n => n.URI && n.URI.toUpperCase() === expectedURI
 );
 
-const usedCount = Number(usedCountRes.rows[0]?.sold_count || 0);
-
-const nextNFTokenID = matching[usedCount];
-
-if (!nextNFTokenID) {
-  return res.status(400).json({ error: "No unused NFTokenID remaining" });
+if (!ledgerNFT?.NFTokenID) {
+  return res.status(400).json({ error: "NFToken not found on XRPL" });
 }
-
-const ledgerNFT = { NFTokenID: nextNFTokenID };
 
     const Amount =
       currency === "XRP"
@@ -274,27 +258,18 @@ const ledgerNFT = { NFTokenID: nextNFTokenID };
         }
       }
     );
-
-// ⏳ POLL XRPL FOR CREATED SELL OFFER
+// ⏳ POLL XRPL FOR CREATED SELL OFFER (PROVEN WORKING)
 let sellOfferIndex = null;
 
-for (let i = 0; i < 30; i++) {
+for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
-  let offers;
-  try {
-    offers = await xrplClient.request({
-      command: "nft_sell_offers",
-      nft_id: ledgerNFT.NFTokenID
-    });
-  } catch (err) {
-    // XRPL returns notFound until the offer exists — keep polling
-    const msg = err?.data?.error_message || err?.data?.error || err?.message;
-    if (msg === "notFound" || msg === "objectNotFound") continue;
-    throw err;
-  }
+  const offers = await xrplClient.request({
+    command: "nft_sell_offers",
+    nft_id: ledgerNFT.NFTokenID
+  });
 
-  if (offers?.result?.offers?.length) {
+  if (offers.result?.offers?.length) {
     sellOfferIndex = offers.result.offers[0].nft_offer_index;
     break;
   }
@@ -313,14 +288,7 @@ await pool.query(
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    console.error("LIST ERROR FULL:", {
-  message: e?.message,
-  data: e?.data,
-  responseData: e?.response?.data,
-  responseStatus: e?.response?.status,
-  stack: e?.stack
-});
-
+    console.error("list-on-marketplace error:", e?.response?.data || e.message);
     return res.status(500).json({ error: "List failed" });
   } finally {
     if (xrplClient) {
