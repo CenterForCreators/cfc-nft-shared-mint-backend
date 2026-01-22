@@ -274,18 +274,27 @@ const ledgerNFT = { NFTokenID: nextNFTokenID };
         }
       }
     );
-// ⏳ POLL XRPL FOR CREATED SELL OFFER (PROVEN WORKING)
+
+// ⏳ POLL XRPL FOR CREATED SELL OFFER
 let sellOfferIndex = null;
 
 for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: ledgerNFT.NFTokenID
-  });
+  let offers;
+  try {
+    offers = await xrplClient.request({
+      command: "nft_sell_offers",
+      nft_id: ledgerNFT.NFTokenID
+    });
+  } catch (err) {
+    // XRPL returns notFound until the offer exists — keep polling
+    const msg = err?.data?.error_message || err?.data?.error || err?.message;
+    if (msg === "notFound" || msg === "objectNotFound") continue;
+    throw err;
+  }
 
-  if (offers.result?.offers?.length) {
+  if (offers?.result?.offers?.length) {
     sellOfferIndex = offers.result.offers[0].nft_offer_index;
     break;
   }
