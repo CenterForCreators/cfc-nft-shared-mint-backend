@@ -1,14 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -264,14 +254,18 @@ let sellOfferIndex = null;
 for (let i = 0; i < 12; i++) {
   await new Promise(r => setTimeout(r, 2000));
 
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: ledgerNFT.NFTokenID
-  });
+  try {
+    const offers = await xrplClient.request({
+      command: "nft_sell_offers",
+      nft_id: ledgerNFT.NFTokenID
+    });
 
-  if (offers.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
+    if (offers.result?.offers?.length) {
+      sellOfferIndex = offers.result.offers[0].nft_offer_index;
+      break;
+    }
+  } catch (e) {
+    // XRPL returns "notFound" briefly after signing — this is OK
   }
 }
 
