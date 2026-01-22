@@ -196,8 +196,14 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
     const nft = r.rows[0];
 // 🔹 LOAD NEXT UNUSED NFTOKEN ID FROM SUBMISSION
+
 const sub = await pool.query(
-  "SELECT nftoken_ids FROM submissions WHERE id=$1",
+  `
+  SELECT s.nftoken_ids
+  FROM submissions s
+  JOIN marketplace_nfts m ON m.submission_id = s.id
+  WHERE m.id = $1
+  `,
   [marketplace_nft_id]
 );
 
