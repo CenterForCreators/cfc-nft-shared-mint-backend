@@ -208,14 +208,16 @@ const acct = await xrplClient.request({
 const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
   .toUpperCase();
-
-const ledgerNFT = acct.result.account_nfts.find(
+const matching = acct.result.account_nfts.filter(
   n => n.URI && n.URI.toUpperCase() === expectedURI
 );
 
-if (!ledgerNFT?.NFTokenID) {
-  return res.status(400).json({ error: "NFToken not found on XRPL" });
+if (!matching.length) {
+  return res.status(400).json({ error: "No matching NFTs found on XRPL" });
 }
+
+// pick the newest token (last minted)
+const ledgerNFT = matching[matching.length - 1];
 
     const Amount =
       currency === "XRP"
