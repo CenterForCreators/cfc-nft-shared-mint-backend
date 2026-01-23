@@ -357,10 +357,21 @@ app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
 
-    const r = await pool.query(
-      "SELECT * FROM marketplace_nfts WHERE id=$1",
-      [id]
-    );
+   const r = await pool.query(
+  `
+  SELECT
+    n.*,
+    o.sell_offer_index
+  FROM marketplace_nfts n
+  JOIN marketplace_sell_offers o
+    ON o.marketplace_nft_id = n.id
+  WHERE n.id=$1
+    AND o.status='OPEN'
+  ORDER BY o.created_at ASC
+  LIMIT 1
+  `,
+  [id]
+);
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "NFT not found" });
@@ -374,7 +385,7 @@ if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-       NFTokenSellOffer: nft.sell_offer_index_xrp || nft.sell_offer_index
+       NFTokenSellOffer: nft.sell_offer_index
       },
       options: {
         submit: true,
@@ -625,6 +636,35 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
     const blob = p?.custom_meta?.blob;
     const txid = p?.response?.txid;
+    // ------------------------------
+// SAVE SELL OFFER (NFTokenCreateOffer)
+// ------------------------------
+if (p?.response?.txjson?.TransactionType === "NFTokenCreateOffer") {
+  const meta = p?.custom_meta?.blob;
+  const offerIndex =
+    p?.response?.meta?.offer_id ||
+    p?.response?.txjson?.OfferID;
+
+  if (meta?.marketplace_nft_id && offerIndex) {
+    await pool.query(
+      `
+      INSERT INTO marketplace_sell_offers
+        (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT DO NOTHING
+      `,
+      [
+        meta.marketplace_nft_id,
+        p.response.txjson.NFTokenID,
+        offerIndex,
+        meta.currency || "XRP"
+      ]
+    );
+  }
+
+  return res.json({ ok: true });
+}
+
     const buyer = p?.response?.account;
 
     if (!txid || !blob?.nft_id || !buyer) {
