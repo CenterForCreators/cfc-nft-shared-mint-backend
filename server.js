@@ -410,14 +410,14 @@ app.post("/api/market/pay-xrp", async (req, res) => {
   `
   SELECT
     n.*,
-    o.sell_offer_index
+    COALESCE(o.sell_offer_index, n.sell_offer_index_xrp) AS sell_offer_index
   FROM marketplace_nfts n
-  JOIN marketplace_sell_offers o
+  LEFT JOIN marketplace_sell_offers o
     ON o.marketplace_nft_id = n.id
-  WHERE n.id = $1
-    AND o.currency = 'XRP'
+   AND o.currency = 'XRP'
    AND COALESCE(o.status, 'OPEN') = 'OPEN'
-  ORDER BY o.created_at ASC
+  WHERE n.id = $1
+  ORDER BY o.created_at ASC NULLS LAST
   LIMIT 1
   `,
   [id]
