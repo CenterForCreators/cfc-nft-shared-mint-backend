@@ -416,7 +416,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     ON o.marketplace_nft_id = n.id
   WHERE n.id = $1
     AND o.currency = 'XRP'
-    AND o.status = 'OPEN'
+   AND COALESCE(o.status, 'OPEN') = 'OPEN'
   ORDER BY o.created_at ASC
   LIMIT 1
   `,
@@ -705,8 +705,8 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
   await pool.query(
   `
   INSERT INTO marketplace_sell_offers
-    (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
-  VALUES ($1,$2,$3,$4)
+  (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+VALUES ($1,$2,$3,$4,'OPEN')
   `,
   [
     meta.marketplace_nft_id,
