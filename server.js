@@ -686,20 +686,20 @@ const offerNode = p?.meta?.AffectedNodes?.find(
 const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
 
   if (meta?.marketplace_nft_id && offerIndex) {
-    await pool.query(
-      `
-      INSERT INTO marketplace_sell_offers
-        (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
-      VALUES ($1,$2,$3,$4)
-      ON CONFLICT DO NOTHING
-      `,
-      [
-        meta.marketplace_nft_id,
-       p.txjson.NFTokenID,
-        offerIndex,
-        meta.currency || "XRP"
-      ]
-    );
+  await pool.query(
+  `
+  INSERT INTO marketplace_sell_offers
+    (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
+  VALUES ($1,$2,$3,$4)
+  `,
+  [
+    meta.marketplace_nft_id,
+    String(p.txjson.NFTokenID),
+    String(offerIndex),
+    meta.currency || "XRP"
+  ]
+);
+
   }
 
   return res.json({ ok: true });
