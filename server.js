@@ -297,28 +297,32 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    await pool.query(
-      `
-      INSERT INTO marketplace_nfts
-      (
-        submission_id,
-        name,
-        description,
-        category,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity,
-        minted
-      )
-      VALUES
-      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
-      ON CONFLICT DO NOTHING
-      `,
+  await pool.query(
+  `
+  INSERT INTO marketplace_nfts
+  (
+    submission_id,
+    name,
+    description,
+    category,
+    image_cid,
+    metadata_cid,
+    price_xrp,
+    price_rlusd,
+    creator_wallet,
+    terms,
+    website,
+    quantity,
+    minted,
+    nftoken_id
+  )
+  VALUES
+  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,
+   (SELECT nftoken_id FROM submissions WHERE id=$1)
+  )
+  ON CONFLICT DO NOTHING
+  `,
+
       [
         submission_id,
         name,
