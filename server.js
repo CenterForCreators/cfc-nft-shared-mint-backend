@@ -639,11 +639,13 @@ app.post("/api/xaman/webhook", async (req, res) => {
     // ------------------------------
 // SAVE SELL OFFER (NFTokenCreateOffer)
 // ------------------------------
-if (p?.response?.txjson?.TransactionType === "NFTokenCreateOffer") {
+if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
   const meta = p?.custom_meta?.blob;
-  const offerIndex =
-    p?.response?.meta?.offer_id ||
-    p?.response?.txjson?.OfferID;
+const offerNode = p?.meta?.AffectedNodes?.find(
+  n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+);
+
+const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
 
   if (meta?.marketplace_nft_id && offerIndex) {
     await pool.query(
@@ -655,7 +657,7 @@ if (p?.response?.txjson?.TransactionType === "NFTokenCreateOffer") {
       `,
       [
         meta.marketplace_nft_id,
-        p.response.txjson.NFTokenID,
+       p.txjson.NFTokenID,
         offerIndex,
         meta.currency || "XRP"
       ]
