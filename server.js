@@ -172,13 +172,21 @@ app.post("/api/list-on-marketplace", async (req, res) => {
     }
 
     const r = await pool.query(
-      `
-    SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd, nftoken_id
-FROM marketplace_nfts
-WHERE id=$1
-      `,
-      [marketplace_nft_id]
-    );
+  `
+  SELECT
+    m.id,
+    m.creator_wallet,
+    m.metadata_cid,
+    m.price_xrp,
+    m.price_rlusd,
+    s.nftoken_ids
+  FROM marketplace_nfts m
+  JOIN submissions s
+    ON s.id = m.submission_id
+  WHERE m.id=$1
+  `,
+  [marketplace_nft_id]
+);
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Marketplace NFT not found" });
@@ -190,7 +198,11 @@ WHERE id=$1
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
 // Do NOT pre-check XRPL — allow Xaman to handle signing
-const ledgerNFT = { NFTokenID: nft.nftoken_id };
+const ids = Array.isArray(nft.nftoken_ids)
+  ? nft.nftoken_ids
+  : JSON.parse(nft.nftoken_ids || "[]");
+
+const ledgerNFT = { NFTokenID: ids[0] };
 
     const Amount =
       currency === "XRP"
