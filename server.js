@@ -241,8 +241,8 @@ const ledgerNFT = { NFTokenID: tokenId };
         },
         custom_meta: {
   blob: {
-    marketplace_nft_id: marketplace_nft_id,
-    currency
+    nft_id: id,
+    sell_offer_index: nft.sell_offer_index
   }
 }
       },
@@ -458,14 +458,7 @@ app.post("/api/market/pay-xrp", async (req, res) => {
         }
       }
     );
-await pool.query(
-  `
-  UPDATE marketplace_sell_offers
-  SET status = 'USED'
-  WHERE sell_offer_index = $1
-  `,
-  [nft.sell_offer_index]
-);
+
     res.json({ link: xumm.data.next.always });
   } catch (e) {
     console.error(e);
@@ -726,7 +719,16 @@ VALUES ($1,$2,$3,$4,'OPEN')
     if (!txid || !blob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
-
+if (blob?.sell_offer_index) {
+  await client.query(
+    `
+    UPDATE marketplace_sell_offers
+    SET status='USED'
+    WHERE sell_offer_index=$1
+    `,
+    [blob.sell_offer_index]
+  );
+}
     await client.query("BEGIN");
 
     // 🔹 LOCK NFT ROW
