@@ -17,7 +17,7 @@ async function pollForSellOffer({
    
 const offers = await client.request({
   command: "nft_sell_offers",
-  nft_id: ledgerNFT.NFTokenID
+nft_id: nftokenId 
 });
 
 if (offers.result?.offers?.length) {
@@ -173,17 +173,19 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
     const r = await pool.query(
   `
-  SELECT
-    m.id,
-    m.creator_wallet,
-    m.metadata_cid,
-    m.price_xrp,
-    m.price_rlusd,
-    s.nftoken_ids
-  FROM marketplace_nfts m
-  JOIN submissions s
-    ON s.id = m.submission_id
-  WHERE m.id=$1
+ SELECT
+  m.id,
+  m.submission_id,
+  m.creator_wallet,
+  m.metadata_cid,
+  m.price_xrp,
+  m.price_rlusd,
+  m.nftoken_id,
+  s.nftoken_ids
+FROM marketplace_nfts m
+JOIN submissions s
+  ON s.id = m.submission_id
+WHERE m.id=$1
   `,
   [marketplace_nft_id]
 );
@@ -202,7 +204,13 @@ const ids = Array.isArray(nft.nftoken_ids)
   ? nft.nftoken_ids
   : JSON.parse(nft.nftoken_ids || "[]");
 
-const ledgerNFT = { NFTokenID: ids[0] };
+const tokenId = nft.nftoken_id || ids[0];
+
+if (!tokenId || String(tokenId).length !== 64) {
+  return res.status(400).json({ error: "NFTokenID missing for listing" });
+}
+
+const ledgerNFT = { NFTokenID: tokenId };
 
     const Amount =
       currency === "XRP"
