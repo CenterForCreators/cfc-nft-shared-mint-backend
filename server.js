@@ -688,7 +688,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
 // ------------------------------
 if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
   const meta = p?.custom_meta?.blob;
-const offerNode = p?.meta?.AffectedNodes?.find(
+const offerNode = p?.response?.meta?.AffectedNodes?.find(
   n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
 );
 
