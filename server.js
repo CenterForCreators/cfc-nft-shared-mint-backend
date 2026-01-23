@@ -407,7 +407,19 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     const { id } = req.body;
 
   const r = await pool.query(
-  "SELECT * FROM marketplace_nfts WHERE id=$1",
+  `
+  SELECT
+    n.*,
+    o.sell_offer_index
+  FROM marketplace_nfts n
+  JOIN marketplace_sell_offers o
+    ON o.marketplace_nft_id = n.id
+  WHERE n.id = $1
+    AND o.currency = 'XRP'
+    AND o.status = 'OPEN'
+  ORDER BY o.created_at ASC
+  LIMIT 1
+  `,
   [id]
 );
 
@@ -416,9 +428,6 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     }
 
    const nft = r.rows[0];
-if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
-  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
-}
 
     const payload = {
       txjson: {
@@ -449,7 +458,14 @@ if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
         }
       }
     );
-
+await pool.query(
+  `
+  UPDATE marketplace_sell_offers
+  SET status = 'USED'
+  WHERE sell_offer_index = $1
+  `,
+  [nft.sell_offer_index]
+);
     res.json({ link: xumm.data.next.always });
   } catch (e) {
     console.error(e);
