@@ -692,7 +692,8 @@ const offerNode = p?.meta?.AffectedNodes?.find(
   n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
 );
 
-const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
+const offerIndex =
+  offerNode?.CreatedNode?.NewFields?.NFTokenOfferID;
 
   if (meta?.marketplace_nft_id && offerIndex) {
   await pool.query(
