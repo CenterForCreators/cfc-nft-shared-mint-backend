@@ -205,13 +205,27 @@ const ids = Array.isArray(nft.nftoken_ids)
   ? nft.nftoken_ids
   : JSON.parse(nft.nftoken_ids || "[]");
 
-const tokenId = nft.nftoken_id || ids[0];
+// ✅ Pick the NEXT NFTokenID that does NOT already have a sell offer row
+const existing = await pool.query(
+  `
+  SELECT nftoken_id
+  FROM marketplace_sell_offers
+  WHERE marketplace_nft_id = $1
+    AND currency = $2
+  `,
+  [marketplace_nft_id, currency]
+);
 
-if (!tokenId || String(tokenId).length !== 64) {
-  return res.status(400).json({ error: "NFTokenID missing for listing" });
+const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
+
+const tokenId = ids.find(id => id && String(id).length === 64 && !alreadyListed.has(String(id)));
+
+if (!tokenId) {
+  return res.status(400).json({ error: "All NFTs already listed" });
 }
 
-const ledgerNFT = { NFTokenID: tokenId };
+const ledgerNFT = { NFTokenID: String(tokenId) };
+
 
     const Amount =
       currency === "XRP"
