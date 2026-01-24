@@ -265,10 +265,11 @@ const offers = await xrplClient.request({
   nft_id: String(ledgerNFT.NFTokenID)
 }); 
 
-  if (offers.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
-  }
+ if (offers.result?.offers?.length) {
+  // pick the newest offer (highest index in returned list)
+  sellOfferIndex = offers.result.offers[offers.result.offers.length - 1].nft_offer_index;
+  break;
+}
 }
 
 if (!sellOfferIndex) {
