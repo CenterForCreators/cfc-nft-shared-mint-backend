@@ -242,8 +242,8 @@ const ledgerNFT = { NFTokenID: tokenId };
         },
         custom_meta: {
   blob: {
-    nft_id: id,
-    sell_offer_index: nft.sell_offer_index
+    marketplace_nft_id: marketplace_nft_id,
+    currency
   }
 }
       },
@@ -266,11 +266,10 @@ const offers = await xrplClient.request({
   nft_id: String(ledgerNFT.NFTokenID)
 }); 
 
- if (offers.result?.offers?.length) {
-  // pick the newest offer (highest index in returned list)
-  sellOfferIndex = offers.result.offers[offers.result.offers.length - 1].nft_offer_index;
-  break;
-}
+  if (offers.result?.offers?.length) {
+    sellOfferIndex = offers.result.offers[0].nft_offer_index;
+    break;
+  }
 }
 
 if (!sellOfferIndex) {
@@ -407,7 +406,8 @@ app.get("/api/market/all", async (_, res) => {
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
-const r = await pool.query(
+
+  const r = await pool.query(
   "SELECT * FROM marketplace_nfts WHERE id=$1",
   [id]
 );
@@ -417,13 +417,14 @@ const r = await pool.query(
     }
 
    const nft = r.rows[0];
-if (!nft.sell_offer_index_xrp) {
-  return res.status(400).json({ error: "No XRP sell offer set" });
+if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
+  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
 }
+
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-      NFTokenSellOffer: nft.sell_offer_index_xrp
+       NFTokenSellOffer: nft.sell_offer_index_xrp || nft.sell_offer_index
       },
       options: {
         submit: true,
@@ -679,19 +680,18 @@ app.post("/api/xaman/webhook", async (req, res) => {
 // ------------------------------
 if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
   const meta = p?.custom_meta?.blob;
-const offerNode = p?.response?.meta?.AffectedNodes?.find(
+const offerNode = p?.meta?.AffectedNodes?.find(
   n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
 );
 
-const offerIndex =
-  offerNode?.CreatedNode?.NewFields?.NFTokenOfferID;
+const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
 
   if (meta?.marketplace_nft_id && offerIndex) {
   await pool.query(
   `
   INSERT INTO marketplace_sell_offers
-  (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
-VALUES ($1,$2,$3,$4,'OPEN')
+    (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
+  VALUES ($1,$2,$3,$4)
   `,
   [
     meta.marketplace_nft_id,
@@ -711,16 +711,7 @@ VALUES ($1,$2,$3,$4,'OPEN')
     if (!txid || !blob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
-if (blob?.sell_offer_index) {
-  await client.query(
-    `
-    UPDATE marketplace_sell_offers
-    SET status='USED'
-    WHERE sell_offer_index=$1
-    `,
-    [blob.sell_offer_index]
-  );
-}
+
     await client.query("BEGIN");
 
     // 🔹 LOCK NFT ROW
