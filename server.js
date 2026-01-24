@@ -718,9 +718,9 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
   if (meta?.marketplace_nft_id && offerIndex) {
   await pool.query(
   `
-  INSERT INTO marketplace_sell_offers
-    (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
-  VALUES ($1,$2,$3,$4)
+ INSERT INTO marketplace_sell_offers
+  (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+VALUES ($1,$2,$3,$4,'OPEN')
   `,
   [
     meta.marketplace_nft_id,
