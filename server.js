@@ -1,4 +1,5 @@
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -406,24 +407,24 @@ app.get("/api/market/all", async (_, res) => {
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
-
-  
 const r = await pool.query(
   "SELECT * FROM marketplace_nfts WHERE id=$1",
   [id]
 );
+
     if (!r.rows.length) {
       return res.status(404).json({ error: "NFT not found" });
     }
+
+   const nft = r.rows[0];
 if (!nft.sell_offer_index_xrp) {
   return res.status(400).json({ error: "No XRP sell offer set" });
 }
-   const nft = r.rows[0];
-
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
       NFTokenSellOffer: nft.sell_offer_index_xrp
+      },
       options: {
         submit: true,
         return_url: {
