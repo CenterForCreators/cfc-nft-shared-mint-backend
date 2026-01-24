@@ -348,31 +348,27 @@ app.post("/api/add-nft", async (req, res) => {
     terms,
     website,
     quantity,
-    minted,
-    nftoken_id
+    minted
   )
   VALUES
-  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,
-   (SELECT nftoken_id FROM submissions WHERE id=$1)
-  )
+  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
   ON CONFLICT DO NOTHING
   `,
-
-      [
-        submission_id,
-        name,
-        description || "",
-        category || "all",
-        image_cid || null,
-        metadata_cid,
-        price_xrp || null,
-        price_rlusd || null,
-        creator_wallet,
-        terms || "",
-        website || "",
-        Number(quantity || 1)
-      ]
-    );
+  [
+    submission_id,
+    name,
+    description || "",
+    category || "all",
+    image_cid || null,
+    metadata_cid,
+    price_xrp || null,
+    price_rlusd || null,
+    creator_wallet,
+    terms || "",
+    website || "",
+    Number(quantity || 1)
+  ]
+);
 
     res.json({ ok: true });
   } catch (e) {
