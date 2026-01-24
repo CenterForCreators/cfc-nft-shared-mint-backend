@@ -407,24 +407,37 @@ app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
 
-  const r = await pool.query(
-  "SELECT * FROM marketplace_nfts WHERE id=$1",
+const r = await pool.query(
+  `
+  SELECT
+    n.*,
+    o.sell_offer_index
+  FROM marketplace_nfts n
+  JOIN marketplace_sell_offers o
+    ON o.marketplace_nft_id = n.id
+  WHERE n.id = $1
+    AND o.currency = 'XRP'
+    AND COALESCE(o.status, 'OPEN') = 'OPEN'
+  ORDER BY o.created_at ASC
+  LIMIT 1
+  `,
   [id]
 );
 
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "NFT not found" });
-    }
+if (!r.rows.length) {
+  return res.status(404).json({ error: "NFT not found" });
+}
 
-   const nft = r.rows[0];
-if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
-  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
+const nft = r.rows[0];
+
+if (!nft.sell_offer_index) {
+  return res.status(400).json({ error: "No active XRP sell offer for this NFT" });
 }
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-       NFTokenSellOffer: nft.sell_offer_index_xrp || nft.sell_offer_index
+      NFTokenSellOffer: nft.sell_offer_index
       },
       options: {
         submit: true,
@@ -433,9 +446,11 @@ if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
           app: "https://centerforcreators.com/nft-marketplace"
         }
       },
-      custom_meta: {
+     custom_meta: {
         blob: {
-          nft_id: id
+          nft_id: id,
+          sell_offer_index: nft.sell_offer_index,
+          currency: "XRP"
         }
       }
     };
