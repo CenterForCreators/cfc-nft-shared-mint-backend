@@ -218,9 +218,6 @@ if (!ledgerNFT?.NFTokenID) {
   return res.status(400).json({ error: "NFToken not found on XRPL" });
 }
 
-const ledgerNFT = { NFTokenID: String(tokenId) };
-
-
     const Amount =
       currency === "XRP"
         ? String(Math.floor(Number(nft.price_xrp) * 1_000_000))
