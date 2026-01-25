@@ -294,6 +294,20 @@ await pool.query(
   "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
   [sellOfferIndex, marketplace_nft_id]
 );
+await pool.query(
+  `
+  INSERT INTO marketplace_sell_offers
+    (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+  VALUES ($1,$2,$3,$4,'OPEN')
+  ON CONFLICT DO NOTHING
+  `,
+  [
+    marketplace_nft_id,
+    String(ledgerNFT.NFTokenID),
+    String(sellOfferIndex),
+    currency
+  ]
+);
 
     return res.json({ link: xumm.data.next.always });
 
