@@ -200,28 +200,22 @@ WHERE m.id=$1
     // Connect XRPL
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
-// Do NOT pre-check XRPL — allow Xaman to handle signing
-const ids = Array.isArray(nft.nftoken_ids)
-  ? nft.nftoken_ids
-  : JSON.parse(nft.nftoken_ids || "[]");
+// 🔁 PROVEN WORKING: find NFT on ledger by metadata CID
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
 
-// ✅ Pick the NEXT NFTokenID that does NOT already have a sell offer row
-const existing = await pool.query(
-  `
-  SELECT nftoken_id
-  FROM marketplace_sell_offers
-  WHERE marketplace_nft_id = $1
-    AND currency = $2
-  `,
-  [marketplace_nft_id, currency]
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
+
+const ledgerNFT = acct.result.account_nfts.find(
+  n => n.URI && n.URI.toUpperCase() === expectedURI
 );
 
-const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
-
-const tokenId = ids.find(id => id && String(id).length === 64 && !alreadyListed.has(String(id)));
-
-if (!tokenId) {
-  return res.status(400).json({ error: "All NFTs already listed" });
+if (!ledgerNFT?.NFTokenID) {
+  return res.status(400).json({ error: "NFToken not found on XRPL" });
 }
 
 const ledgerNFT = { NFTokenID: String(tokenId) };
