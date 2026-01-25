@@ -428,14 +428,14 @@ if (!r.rows.length) {
 
 const nft = r.rows[0];
 
-if (!nft.sell_offer_index) {
-  return res.status(400).json({ error: "No active XRP sell offer for this NFT" });
+if (!nft.sell_offer_index_xrp) {
+  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
 }
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-     NFTokenSellOffer: nft.sell_offer_index
+    NFTokenSellOffer: nft.sell_offer_index_xrp
       },
       options: {
         submit: true,
@@ -444,13 +444,13 @@ if (!nft.sell_offer_index) {
           app: "https://centerforcreators.com/nft-marketplace"
         }
       },
-     custom_meta: {
-        blob: {
-          nft_id: id,
-          sell_offer_index: nft.sell_offer_index,
-          currency: "XRP"
-        }
-      }
+    custom_meta: {
+  blob: {
+    nft_id: id,
+    sell_offer_index: nft.sell_offer_index_xrp,
+    currency: "XRP"
+  }
+}
     };
 
     const xumm = await axios.post(
