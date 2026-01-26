@@ -665,35 +665,47 @@ app.post("/api/xaman/webhook", async (req, res) => {
   try {
     const p = req.body?.payload;
 
-    if (
-      p?.response?.dispatched_result !== "tesSUCCESS" ||
-      p?.meta?.signed !== true
-    ) {
-      return res.json({ ok: true });
-    }
-console.log("WEBHOOK HIT txType=", p?.txjson?.TransactionType, "signed=", p?.meta?.signed, "tes=", p?.response?.dispatched_result);
-console.log("WEBHOOK blob=", p?.custom_meta?.blob);
 
     const blob = p?.custom_meta?.blob;
     const txid = p?.response?.txid;
-    // ------------------------------
+// ------------------------------
 // SAVE SELL OFFER (NFTokenCreateOffer)
 // ------------------------------
 if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
   const meta = p?.custom_meta?.blob;
-const offerNode = p?.meta?.AffectedNodes?.find(
-  n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-);
 
-const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
+  const offerNode = p?.meta?.AffectedNodes?.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+  );
+
+  const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
 
   if (meta?.marketplace_nft_id && offerIndex) {
-
+    await pool.query(
+      `
+      INSERT INTO marketplace_sell_offers
+        (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+      VALUES ($1,$2,$3,$4,'OPEN')
+      ON CONFLICT DO NOTHING
+      `,
+      [
+        meta.marketplace_nft_id,
+        String(p.txjson.NFTokenID),
+        String(offerIndex),
+        meta.currency || "XRP"
+      ]
+    );
   }
 
   return res.json({ ok: true });
 }
 
+ if (
+      p?.response?.dispatched_result !== "tesSUCCESS" ||
+      p?.meta?.signed !== true
+    ) {
+      return res.json({ ok: true });
+    }
     const buyer = p?.response?.account;
 
     if (!txid || !blob?.nft_id || !buyer) {
