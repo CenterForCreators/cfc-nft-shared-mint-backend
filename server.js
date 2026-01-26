@@ -259,11 +259,12 @@ if (!ledgerNFT?.NFTokenID) {
           Flags: 1
         },
         options: {
-          submit: true,
-          return_url: {
-            web: "https://centerforcreators.com/nft-creator",
-            app: "https://centerforcreators.com/nft-creator"
-          }
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
         },
         custom_meta: {
   blob: {
@@ -423,12 +424,13 @@ if (!nft.sell_offer_index_xrp) {
         TransactionType: "NFTokenAcceptOffer",
     NFTokenSellOffer: nft.sell_offer_index_xrp
       },
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
+     options: {
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
       },
     custom_meta: {
   blob: {
@@ -486,11 +488,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         NFTokenSellOffer: nft.sell_offer_index_rlusd
       },
       options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
       },
       custom_meta: {
         blob: {
@@ -686,14 +689,6 @@ if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
     nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
       ?.ModifiedNode?.LedgerIndex ||
     null;
-console.log("SELL_OFFER_SAVE_CHECK", {
-  hasMeta: !!meta,
-  marketplace_nft_id: meta?.marketplace_nft_id,
-  currency: meta?.currency,
-  nftoken_id: p?.txjson?.NFTokenID,
-  offerIndex,
-  hasAffectedNodes: !!p?.meta?.AffectedNodes
-});
 
   // ✅ fallback: if webhook payload doesn't include offer ledger index, fetch tx from XRPL
   if (!offerIndex && p?.response?.txid) {
