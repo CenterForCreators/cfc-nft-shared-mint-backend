@@ -715,6 +715,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
   try {
     const p = req.body?.payload;
+console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
 
     // ✅ only act on signed successful payloads
     if (
