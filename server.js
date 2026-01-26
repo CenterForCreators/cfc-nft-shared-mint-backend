@@ -686,6 +686,14 @@ if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
     nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
       ?.ModifiedNode?.LedgerIndex ||
     null;
+console.log("SELL_OFFER_SAVE_CHECK", {
+  hasMeta: !!meta,
+  marketplace_nft_id: meta?.marketplace_nft_id,
+  currency: meta?.currency,
+  nftoken_id: p?.txjson?.NFTokenID,
+  offerIndex,
+  hasAffectedNodes: !!p?.meta?.AffectedNodes
+});
 
   // ✅ fallback: if webhook payload doesn't include offer ledger index, fetch tx from XRPL
   if (!offerIndex && p?.response?.txid) {
