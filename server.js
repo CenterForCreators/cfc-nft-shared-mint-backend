@@ -671,6 +671,8 @@ app.post("/api/xaman/webhook", async (req, res) => {
     ) {
       return res.json({ ok: true });
     }
+console.log("WEBHOOK HIT txType=", p?.txjson?.TransactionType, "signed=", p?.meta?.signed, "tes=", p?.response?.dispatched_result);
+console.log("WEBHOOK blob=", p?.custom_meta?.blob);
 
     const blob = p?.custom_meta?.blob;
     const txid = p?.response?.txid;
