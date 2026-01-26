@@ -674,11 +674,39 @@ app.post("/api/xaman/webhook", async (req, res) => {
 if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
   const meta = p?.custom_meta?.blob;
 
-  const offerNode = p?.meta?.AffectedNodes?.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-  );
+    const nodes =
+    p?.meta?.AffectedNodes ||
+    p?.response?.meta?.AffectedNodes ||
+    p?.meta?.transaction?.meta?.AffectedNodes ||
+    [];
 
-  const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
+  let offerIndex =
+    nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.CreatedNode?.LedgerIndex ||
+    nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.ModifiedNode?.LedgerIndex ||
+    null;
+
+  // ✅ fallback: if webhook payload doesn't include offer ledger index, fetch tx from XRPL
+  if (!offerIndex && p?.response?.txid) {
+    const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
+    await xrplClient.connect();
+    const tx = await xrplClient.request({
+      command: "tx",
+      transaction: p.response.txid,
+      binary: false
+    });
+    await xrplClient.disconnect();
+
+    const txNodes = tx?.result?.meta?.AffectedNodes || [];
+    offerIndex =
+      txNodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+        ?.CreatedNode?.LedgerIndex ||
+      txNodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+        ?.ModifiedNode?.LedgerIndex ||
+      null;
+  }
+
 
   if (meta?.marketplace_nft_id && offerIndex) {
     await pool.query(
