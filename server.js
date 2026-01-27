@@ -740,64 +740,80 @@ app.post("/api/orders/redeem", async (req, res) => {
 // ------------------------------
 const PORT = process.env.PORT || 5000;
 
-
 // ------------------------------
-// XAMAN WEBHOOK (PURCHASE ONLY — QUANTITY SAFE)
+// XAMAN WEBHOOK (SELL OFFER + PURCHASE — QUANTITY SAFE)
 // ------------------------------
 app.post("/api/xaman/webhook", async (req, res) => {
   const client = await pool.connect();
 
   try {
     const p = req.body;
-console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
+
+    console.log("WEBHOOK_RAW_BODY", JSON.stringify(p, null, 2));
 
     // ✅ only act on signed successful payloads
     if (
-      p?.response?.dispatched_result !== "tesSUCCESS" ||
-      p?.meta?.signed !== true
+      p?.payloadResponse?.signed !== true ||
+      !p?.payloadResponse?.txid
     ) {
       return res.json({ ok: true });
     }
 
-    const blob = p?.custom_meta?.blob;
-    const txid = p?.response?.txid;
+    const txid = p.payloadResponse.txid;
+    const metaBlob = p?.custom_meta?.blob;
 
+    // ------------------------------
+    // SAVE SELL OFFER (NFTokenCreateOffer)
+    // ------------------------------
+    if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
+      const nodes =
+        p?.meta?.AffectedNodes ||
+        p?.payloadResponse?.meta?.AffectedNodes ||
+        [];
 
-  // ✅ INSERT ONCE offerIndex EXISTS (after fallback)
-  if (meta?.marketplace_nft_id && p?.txjson?.NFTokenID && offerIndex) {
-    await pool.query(
-      `
-      INSERT INTO marketplace_sell_offers
-        (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
-      VALUES ($1,$2,$3,$4,'OPEN')
-      ON CONFLICT DO NOTHING
-      `,
-      [
-        meta.marketplace_nft_id,
-        String(p.txjson.NFTokenID),
-        String(offerIndex),
-        meta.currency || "XRP"
-      ]
-    );
-  }
+      const offerIndex =
+        nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+          ?.CreatedNode?.LedgerIndex ||
+        nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+          ?.ModifiedNode?.LedgerIndex ||
+        null;
 
-  return res.json({ ok: true });
-}
+      if (
+        metaBlob?.marketplace_nft_id &&
+        offerIndex &&
+        p?.txjson?.NFTokenID
+      ) {
+        await pool.query(
+          `
+          INSERT INTO marketplace_sell_offers
+            (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+          VALUES ($1,$2,$3,$4,'OPEN')
+          `,
+          [
+            metaBlob.marketplace_nft_id,
+            String(p.txjson.NFTokenID),
+            String(offerIndex),
+            metaBlob.currency || "XRP"
+          ]
+        );
+      }
+
+      return res.json({ ok: true });
+    }
 
     // ------------------------------
     // PURCHASE (NFTokenAcceptOffer)
     // ------------------------------
-    const buyer = p?.response?.account;
-    if (!txid || !blob?.nft_id || !buyer) {
+    const buyer = p?.payloadResponse?.account;
+    if (!metaBlob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
 
     await client.query("BEGIN");
 
-    // 🔹 LOCK NFT ROW
     const nftRes = await client.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-      [blob.nft_id]
+      [metaBlob.nft_id]
     );
 
     if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
@@ -807,7 +823,6 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
 
     const nft = nftRes.rows[0];
 
-    // 🔹 RECORD ORDER (idempotent)
     const inserted = await client.query(
       `
       INSERT INTO orders
@@ -819,8 +834,8 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
       [
         nft.id,
         buyer,
-        blob.currency === "RLUSD" ? nft.price_rlusd : nft.price_xrp,
-        blob.currency,
+        metaBlob.currency === "RLUSD" ? nft.price_rlusd : nft.price_xrp,
+        metaBlob.currency,
         txid
       ]
     );
@@ -830,7 +845,6 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
       return res.json({ ok: true });
     }
 
-    // ✅ DECREMENT QUANTITY **ONLY ON PURCHASE**
     await client.query(
       `
       UPDATE marketplace_nfts
@@ -840,15 +854,15 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
       `,
       [nft.id]
     );
-    // ✅ mark that specific sell offer USED (prevents double-use)
-    if (blob?.sell_offer_index) {
+
+    if (metaBlob?.sell_offer_index) {
       await client.query(
         `
         UPDATE marketplace_sell_offers
         SET status='USED'
         WHERE sell_offer_index=$1
         `,
-        [String(blob.sell_offer_index)]
+        [String(metaBlob.sell_offer_index)]
       );
     }
 
@@ -863,6 +877,7 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
     client.release();
   }
 });
+
 
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
