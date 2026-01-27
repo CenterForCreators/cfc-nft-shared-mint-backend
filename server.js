@@ -247,9 +247,9 @@ const existing = await pool.query(
   `,
   [marketplace_nft_id, currency]
 );
-
-const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
-
+const alreadyListed = new Set(
+  existing.rows.map(r => String(r.nftoken_id).toUpperCase())
+);
 
 // 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
 // and is also one of the minted ids + not already listed
@@ -267,7 +267,7 @@ const idSet = new Set(ids.map(id => String(id).toUpperCase()));
 const ledgerNFT = acct.result.account_nfts.find(n =>
   n.NFTokenID &&
   idSet.has(String(n.NFTokenID).toUpperCase()) &&
-  !alreadyListed.has(String(n.NFTokenID)) &&
+  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
   n.URI?.toUpperCase() === expectedURI
 );
 
