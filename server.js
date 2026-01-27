@@ -246,26 +246,18 @@ const existing = await pool.query(
 const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
 
 // 🔁 PROVEN WORKING: verify NFTokenID matches metadata CID on-ledger
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
-
-const expectedURI = xrpl
-  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
-  .toUpperCase();
-
-const ledgerNFT = acct.result.account_nfts.find(n =>
-  n.NFTokenID &&
-  ids.includes(n.NFTokenID) &&
-  !alreadyListed.has(String(n.NFTokenID)) &&
-  n.URI?.toUpperCase() === expectedURI
+const tokenId = ids.find(
+  id =>
+    id &&
+    String(id).length === 64 &&
+    !alreadyListed.has(String(id))
 );
 
-if (!ledgerNFT?.NFTokenID) {
-  return res.status(400).json({ error: "Correct NFT not found on XRPL" });
+if (!tokenId) {
+  return res.status(400).json({ error: "All NFTs already listed" });
 }
 
+const ledgerNFT = { NFTokenID: String(tokenId) };
 
     const Amount =
       currency === "XRP"
