@@ -195,9 +195,8 @@ app.post("/api/list-on-marketplace", async (req, res) => {
   let xrplClient;
 
   try {
-    console.log("LIST_START", { marketplace_nft_id, currency });
-
     const { marketplace_nft_id, currency } = req.body;
+    console.log("LIST_START", { marketplace_nft_id, currency });
 
     if (!marketplace_nft_id || !currency) {
       return res.status(400).json({ error: "Missing params" });
