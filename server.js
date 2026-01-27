@@ -250,11 +250,6 @@ const existing = await pool.query(
 
 const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
 
-// 🔁 PROVEN WORKING: verify NFTokenID matches metadata CID on-ledger
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
 
 // 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
 // and is also one of the minted ids + not already listed
