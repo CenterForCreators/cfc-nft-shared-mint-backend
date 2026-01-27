@@ -262,9 +262,11 @@ const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
   .toUpperCase();
 
+const idSet = new Set(ids.map(id => String(id).toUpperCase()));
+
 const ledgerNFT = acct.result.account_nfts.find(n =>
   n.NFTokenID &&
-  ids.includes(n.NFTokenID) &&
+  idSet.has(String(n.NFTokenID).toUpperCase()) &&
   !alreadyListed.has(String(n.NFTokenID)) &&
   n.URI?.toUpperCase() === expectedURI
 );
