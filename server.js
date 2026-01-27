@@ -768,44 +768,54 @@ if (p?.txjson?.TransactionType === "NFTokenMint") {
   return res.json({ ok: true });
 }
 
-    // ------------------------------
-    // SAVE SELL OFFER (NFTokenCreateOffer)
-    // ------------------------------
-    if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
-      const nodes =
-        p?.meta?.AffectedNodes ||
-        p?.payloadResponse?.meta?.AffectedNodes ||
-        [];
+  // ------------------------------
+// SAVE SELL OFFER (NFTokenCreateOffer) — XRPL FETCH (REQUIRED)
+// ------------------------------
+const tx = await (async () => {
+  const c = new xrpl.Client(process.env.XRPL_NETWORK);
+  await c.connect();
+  const r = await c.request({
+    command: "tx",
+    transaction: txid,
+    binary: false
+  });
+  await c.disconnect();
+  return r.result;
+})();
 
-      const offerIndex =
-        nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
-          ?.CreatedNode?.LedgerIndex ||
-        nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
-          ?.ModifiedNode?.LedgerIndex ||
-        null;
+if (tx?.TransactionType === "NFTokenCreateOffer") {
+  const nodes = tx.meta?.AffectedNodes || [];
 
-      if (
-        metaBlob?.marketplace_nft_id &&
-        offerIndex &&
-        p?.txjson?.NFTokenID
-      ) {
-        await pool.query(
-          `
-          INSERT INTO marketplace_sell_offers
-            (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
-          VALUES ($1,$2,$3,$4,'OPEN')
-          `,
-          [
-            metaBlob.marketplace_nft_id,
-            String(p.txjson.NFTokenID),
-            String(offerIndex),
-            metaBlob.currency || "XRP"
-          ]
-        );
-      }
+  const offerIndex =
+    nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.CreatedNode?.LedgerIndex ||
+    nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.ModifiedNode?.LedgerIndex ||
+    null;
 
-      return res.json({ ok: true });
-    }
+  if (
+    metaBlob?.marketplace_nft_id &&
+    offerIndex &&
+    tx?.NFTokenID
+  ) {
+    await pool.query(
+      `
+      INSERT INTO marketplace_sell_offers
+        (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+      VALUES ($1,$2,$3,$4,'OPEN')
+      ON CONFLICT DO NOTHING
+      `,
+      [
+        metaBlob.marketplace_nft_id,
+        String(tx.NFTokenID),
+        String(offerIndex),
+        metaBlob.currency || "XRP"
+      ]
+    );
+  }
+
+  return res.json({ ok: true });
+}
 
     // ------------------------------
     // PURCHASE (NFTokenAcceptOffer)
