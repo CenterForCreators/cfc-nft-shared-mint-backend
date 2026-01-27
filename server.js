@@ -256,18 +256,27 @@ const acct = await xrplClient.request({
   account: nft.creator_wallet
 });
 
-const tokenId = ids.find(
-  id =>
-    id &&
-    String(id).length === 64 &&
-    !alreadyListed.has(String(id))
+// 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
+// and is also one of the minted ids + not already listed
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
+
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
+
+const ledgerNFT = acct.result.account_nfts.find(n =>
+  n.NFTokenID &&
+  ids.includes(n.NFTokenID) &&
+  !alreadyListed.has(String(n.NFTokenID)) &&
+  n.URI?.toUpperCase() === expectedURI
 );
 
-if (!tokenId) {
-  return res.status(400).json({ error: "All NFTs already listed" });
+if (!ledgerNFT?.NFTokenID) {
+  return res.status(400).json({ error: "Correct NFT not found on XRPL" });
 }
-
-const ledgerNFT = { NFTokenID: String(tokenId) };
 
     const Amount =
       currency === "XRP"
