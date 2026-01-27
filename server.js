@@ -310,6 +310,40 @@ if (!ledgerNFT?.NFTokenID) {
       }
     );
 
+// ⏳ POLL XRPL FOR CREATED SELL OFFER (PROVEN WORKING)
+let sellOfferIndex = null;
+
+for (let i = 0; i < 12; i++) {
+  await new Promise(r => setTimeout(r, 2000));
+
+  const offers = await xrplClient.request({
+    command: "nft_sell_offers",
+    nft_id: String(ledgerNFT.NFTokenID)
+  });
+
+  if (offers.result?.offers?.length) {
+    sellOfferIndex = offers.result.offers[0].nft_offer_index;
+    break;
+  }
+}
+
+if (!sellOfferIndex) {
+  return res.status(500).json({ error: "Sell offer not found on XRPL" });
+}
+
+await pool.query(
+  `
+  INSERT INTO marketplace_sell_offers
+    (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+  VALUES ($1,$2,$3,$4,'OPEN')
+  `,
+  [
+    marketplace_nft_id,
+    String(ledgerNFT.NFTokenID),
+    String(sellOfferIndex),
+    currency
+  ]
+);
 
     return res.json({ link: xumm.data.next.always });
 
@@ -728,46 +762,6 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
     const blob = p?.custom_meta?.blob;
     const txid = p?.response?.txid;
 
-    // ------------------------------
-// SAVE SELL OFFER (NFTokenCreateOffer)
-// ------------------------------
-if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
-  const meta = p?.custom_meta?.blob;
-
-  const nodes =
-    p?.meta?.AffectedNodes ||
-    p?.response?.meta?.AffectedNodes ||
-    p?.meta?.transaction?.meta?.AffectedNodes ||
-    [];
-
-  let offerIndex =
-    nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
-      ?.CreatedNode?.LedgerIndex ||
-    nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
-      ?.ModifiedNode?.LedgerIndex ||
-    null;
-
-  // fallback: fetch tx from XRPL if webhook doesn't include offer index
-  if (!offerIndex && p?.response?.txid) {
-    const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
-    await xrplClient.connect();
-
-    const tx = await xrplClient.request({
-      command: "tx",
-      transaction: p.response.txid,
-      binary: false
-    });
-
-    await xrplClient.disconnect();
-
-    const txNodes = tx?.result?.meta?.AffectedNodes || [];
-    offerIndex =
-      txNodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
-        ?.CreatedNode?.LedgerIndex ||
-      txNodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
-        ?.ModifiedNode?.LedgerIndex ||
-      null;
-  }
 
   // ✅ INSERT ONCE offerIndex EXISTS (after fallback)
   if (meta?.marketplace_nft_id && p?.txjson?.NFTokenID && offerIndex) {
