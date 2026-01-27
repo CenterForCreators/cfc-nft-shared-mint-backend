@@ -308,40 +308,7 @@ const ledgerNFT = { NFTokenID: String(tokenId) };
       }
     );
 
-// ⏳ POLL XRPL FOR CREATED SELL OFFER (PROVEN WORKING)
-let sellOfferIndex = null;
 
-for (let i = 0; i < 12; i++) {
-  await new Promise(r => setTimeout(r, 2000));
-
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: String(ledgerNFT.NFTokenID)
-  });
-
-  if (offers.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
-  }
-}
-
-if (!sellOfferIndex) {
-  return res.status(500).json({ error: "Sell offer not found on XRPL" });
-}
-
-await pool.query(
-  `
-  INSERT INTO marketplace_sell_offers
-    (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
-  VALUES ($1,$2,$3,$4,'OPEN')
-  `,
-  [
-    marketplace_nft_id,
-    String(ledgerNFT.NFTokenID),
-    String(sellOfferIndex),
-    currency
-  ]
-);
 
     return res.json({ link: xumm.data.next.always });
 
