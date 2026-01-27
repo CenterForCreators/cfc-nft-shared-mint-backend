@@ -740,6 +740,33 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
     const txid = p.payloadResponse.txid;
     const metaBlob = p?.custom_meta?.blob;
+// ------------------------------
+// SAVE MINTED NFT (NFTokenMint) — REQUIRED
+// ------------------------------
+if (p?.txjson?.TransactionType === "NFTokenMint") {
+  const metaBlob = p?.custom_meta?.blob;
+
+  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
+    const minted = p.meta.AffectedNodes
+      .filter(n => n.CreatedNode?.LedgerEntryType === "NFTokenPage")
+      .flatMap(n =>
+        n.CreatedNode.NewFields?.NFTokens?.map(t => t.NFToken.NFTokenID) || []
+      );
+
+    if (minted.length) {
+      await pool.query(
+        `
+        UPDATE submissions
+        SET nftoken_ids = COALESCE(nftoken_ids, '[]'::jsonb) || $1::jsonb
+        WHERE id = $2
+        `,
+        [JSON.stringify(minted), metaBlob.submission_id]
+      );
+    }
+  }
+
+  return res.json({ ok: true });
+}
 
     // ------------------------------
     // SAVE SELL OFFER (NFTokenCreateOffer)
