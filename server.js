@@ -195,6 +195,8 @@ app.post("/api/list-on-marketplace", async (req, res) => {
   let xrplClient;
 
   try {
+    console.log("LIST_START", { marketplace_nft_id, currency });
+
     const { marketplace_nft_id, currency } = req.body;
 
     if (!marketplace_nft_id || !currency) {
@@ -219,6 +221,7 @@ WHERE m.id=$1
   `,
   [marketplace_nft_id]
 );
+console.log("LIST_DB_OK", { rows: r.rowCount, nft: r.rows?.[0]?.id, submission_id: r.rows?.[0]?.submission_id });
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Marketplace NFT not found" });
@@ -227,8 +230,11 @@ WHERE m.id=$1
     const nft = r.rows[0];
 
     // Connect XRPL
+    console.log("LIST_XRPL_CONNECTING", { XRPL_NETWORK: process.env.XRPL_NETWORK });
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
+    console.log("LIST_XRPL_CONNECTED");
+
 const ids = Array.isArray(nft.nftoken_ids)
   ? nft.nftoken_ids
   : JSON.parse(nft.nftoken_ids || "[]");
@@ -269,6 +275,7 @@ const ledgerNFT = { NFTokenID: String(tokenId) };
           };
 
     // 🔹 CREATE SELL OFFER (NO PRE-CHECK)
+    console.log("LIST_XAMAN_POSTING");
     const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
       {
@@ -340,7 +347,10 @@ await pool.query(
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    console.error("list-on-marketplace error:", e?.response?.data || e.message);
+   console.error("LIST_ERROR_MESSAGE", e?.message);
+console.error("LIST_ERROR_RESPONSE", e?.response?.status, e?.response?.data);
+console.error("LIST_ERROR_STACK", e?.stack);
+
     return res.status(500).json({ error: "List failed" });
   } finally {
     if (xrplClient) {
