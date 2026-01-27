@@ -729,65 +729,66 @@ console.log("WEBHOOK_RAW_BODY", JSON.stringify(req.body, null, 2));
     const txid = p?.response?.txid;
 
     // ------------------------------
-    // SAVE SELL OFFER (NFTokenCreateOffer)
-    // ------------------------------
-    if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
-      const meta = p?.custom_meta?.blob;
+// SAVE SELL OFFER (NFTokenCreateOffer)
+// ------------------------------
+if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
+  const meta = p?.custom_meta?.blob;
 
-      const nodes =
-        p?.meta?.AffectedNodes ||
-        p?.response?.meta?.AffectedNodes ||
-        p?.meta?.transaction?.meta?.AffectedNodes ||
-        [];
+  const nodes =
+    p?.meta?.AffectedNodes ||
+    p?.response?.meta?.AffectedNodes ||
+    p?.meta?.transaction?.meta?.AffectedNodes ||
+    [];
 
-      let offerIndex =
-        nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
-          ?.CreatedNode?.LedgerIndex ||
-        nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
-          ?.ModifiedNode?.LedgerIndex ||
-        null;
+  let offerIndex =
+    nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.CreatedNode?.LedgerIndex ||
+    nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.ModifiedNode?.LedgerIndex ||
+    null;
 
-      // fallback: fetch tx from XRPL if webhook doesn't include offer index
-      if (!offerIndex && p?.response?.txid) {
-        const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
-        await xrplClient.connect();
+  // fallback: fetch tx from XRPL if webhook doesn't include offer index
+  if (!offerIndex && p?.response?.txid) {
+    const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
+    await xrplClient.connect();
 
-        const tx = await xrplClient.request({
-          command: "tx",
-          transaction: p.response.txid,
-          binary: false
-        });
+    const tx = await xrplClient.request({
+      command: "tx",
+      transaction: p.response.txid,
+      binary: false
+    });
 
-        await xrplClient.disconnect();
+    await xrplClient.disconnect();
 
-        const txNodes = tx?.result?.meta?.AffectedNodes || [];
-        offerIndex =
-          txNodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
-            ?.CreatedNode?.LedgerIndex ||
-          txNodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
-            ?.ModifiedNode?.LedgerIndex ||
-          null;
-      }
+    const txNodes = tx?.result?.meta?.AffectedNodes || [];
+    offerIndex =
+      txNodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+        ?.CreatedNode?.LedgerIndex ||
+      txNodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+        ?.ModifiedNode?.LedgerIndex ||
+      null;
+  }
 
-      if (meta?.marketplace_nft_id && offerIndex && p?.txjson?.NFTokenID) {
-        await pool.query(
-          `
-          INSERT INTO marketplace_sell_offers
-            (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
-          VALUES ($1,$2,$3,$4,'OPEN')
-          ON CONFLICT DO NOTHING
-          `,
-          [
-            meta.marketplace_nft_id,
-            String(p.txjson.NFTokenID),
-            String(offerIndex),
-            meta.currency || "XRP"
-          ]
-        );
-      }
+  // ✅ INSERT ONCE offerIndex EXISTS (after fallback)
+  if (meta?.marketplace_nft_id && p?.txjson?.NFTokenID && offerIndex) {
+    await pool.query(
+      `
+      INSERT INTO marketplace_sell_offers
+        (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+      VALUES ($1,$2,$3,$4,'OPEN')
+      ON CONFLICT DO NOTHING
+      `,
+      [
+        meta.marketplace_nft_id,
+        String(p.txjson.NFTokenID),
+        String(offerIndex),
+        meta.currency || "XRP"
+      ]
+    );
+  }
 
-      return res.json({ ok: true });
-    }
+  return res.json({ ok: true });
+}
 
     // ------------------------------
     // PURCHASE (NFTokenAcceptOffer)
