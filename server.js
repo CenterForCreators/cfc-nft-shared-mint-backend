@@ -782,20 +782,16 @@ app.post("/api/xaman/webhook", async (req, res) => {
     ) {
       return res.json({ ok: true });
     }
-const txid = p.payloadResponse.txid;
-const metaBlob = p?.custom_meta?.blob;
 
-if (!metaBlob) {
-  return res.json({ ok: true });
-}
-
+    const txid = p.payloadResponse.txid;
+    const metaBlob = p?.custom_meta?.blob;
 // ------------------------------
 // SAVE MINTED NFT (NFTokenMint) — REQUIRED
 // ------------------------------
 if (p?.txjson?.TransactionType === "NFTokenMint") {
-  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
+  const metaBlob = p?.custom_meta?.blob;
 
-    
+  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
     const minted = p.meta.AffectedNodes
       .filter(n => n.CreatedNode?.LedgerEntryType === "NFTokenPage")
       .flatMap(n =>
