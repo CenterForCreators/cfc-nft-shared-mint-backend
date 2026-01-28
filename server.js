@@ -1,5 +1,6 @@
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -247,21 +248,16 @@ const existing = await pool.query(
   `,
   [marketplace_nft_id, currency]
 );
-const alreadyListed = new Set(
-  existing.rows.map(r => String(r.nftoken_id).toUpperCase())
-);
+
+const alreadyListed = new Set(existing.rows.map(r => String(r.nftoken_id)));
+
 
 // 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
 // and is also one of the minted ids + not already listed
-const acct = await Promise.race([
-  xrplClient.request({
-    command: "account_nfts",
-    account: nft.creator_wallet
-  }),
-  new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("XRPL account_nfts timeout")), 12000)
-  )
-]);
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
 
 const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
@@ -269,20 +265,16 @@ const expectedURI = xrpl
 
 const idSet = new Set(ids.map(id => String(id).toUpperCase()));
 
-const matching = acct.result.account_nfts.filter(n =>
+const ledgerNFT = acct.result.account_nfts.find(n =>
   n.NFTokenID &&
   idSet.has(String(n.NFTokenID).toUpperCase()) &&
-  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
+  !alreadyListed.has(String(n.NFTokenID)) &&
   n.URI?.toUpperCase() === expectedURI
 );
 
-if (!matching.length) {
+if (!ledgerNFT?.NFTokenID) {
   return res.status(400).json({ error: "Correct NFT not found on XRPL" });
 }
-
-const ledgerNFT = matching.sort((a, b) =>
-  a.NFTokenID.localeCompare(b.NFTokenID)
-)[0];
 
     const Amount =
       currency === "XRP"
