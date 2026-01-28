@@ -253,10 +253,15 @@ const alreadyListed = new Set(
 
 // 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
 // and is also one of the minted ids + not already listed
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
+const acct = await Promise.race([
+  xrplClient.request({
+    command: "account_nfts",
+    account: nft.creator_wallet
+  }),
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("XRPL account_nfts timeout")), 12000)
+  )
+]);
 
 const expectedURI = xrpl
   .convertStringToHex(`ipfs://${nft.metadata_cid}`)
