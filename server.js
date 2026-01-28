@@ -264,16 +264,20 @@ const expectedURI = xrpl
 
 const idSet = new Set(ids.map(id => String(id).toUpperCase()));
 
-const ledgerNFT = acct.result.account_nfts.find(n =>
+const matching = acct.result.account_nfts.filter(n =>
   n.NFTokenID &&
   idSet.has(String(n.NFTokenID).toUpperCase()) &&
   !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
   n.URI?.toUpperCase() === expectedURI
 );
 
-if (!ledgerNFT?.NFTokenID) {
+if (!matching.length) {
   return res.status(400).json({ error: "Correct NFT not found on XRPL" });
 }
+
+const ledgerNFT = matching.sort((a, b) =>
+  a.NFTokenID.localeCompare(b.NFTokenID)
+)[0];
 
     const Amount =
       currency === "XRP"
