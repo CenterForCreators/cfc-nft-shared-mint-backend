@@ -260,7 +260,7 @@ if (!nft.nftoken_id) {
   );
 }
 
-const ledgerNFT = { NFTokenID: tokenIdFromSubmission };
+ledgerNFT = { NFTokenID: tokenIdFromSubmission };
 
 const existing = await pool.query(
   `
