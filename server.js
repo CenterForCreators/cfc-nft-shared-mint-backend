@@ -462,7 +462,7 @@ const r = await pool.query(
   "SELECT * FROM marketplace_nfts WHERE id=$1",
   [id]
 );
-const r = await pool.query(
+const result = await pool.query(
   `
   SELECT
     n.*,
@@ -479,17 +479,16 @@ const r = await pool.query(
   [id]
 );
 
-if (!o.rows.length) {
+if (!result.rows.length) {
   return res.status(400).json({ error: "No XRP sell offer set for this NFT." });
 }
 
-const nft = r.rows[0];
-
+const nft = result.rows[0];
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-  NFTokenSellOffer: o.rows[0].sell_offer_index
+  NFTokenSellOffer: nft.sell_offer_index
       },
      options: {
   submit: true,
@@ -502,7 +501,7 @@ const nft = r.rows[0];
     custom_meta: {
   blob: {
     nft_id: id,
-    sell_offer_index: nft.sell_offer_index_xrp,
+   sell_offer_index: nft.sell_offer_index,
     currency: "XRP"
   }
 }
