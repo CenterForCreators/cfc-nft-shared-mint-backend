@@ -481,9 +481,6 @@ if (!r.rows.length) {
 
 const nft = r.rows[0];
 
-if (!nft.sell_offer_index_xrp) {
-  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
-}
 
     const payload = {
       txjson: {
