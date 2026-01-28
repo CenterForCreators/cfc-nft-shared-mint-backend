@@ -459,24 +459,24 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     const { id } = req.body;
 
 const r = await pool.query(
+  "SELECT * FROM marketplace_nfts WHERE id=$1",
+  [id]
+);
+const o = await pool.query(
   `
-  SELECT
-    n.*,
-    o.sell_offer_index
-  FROM marketplace_nfts n
-  JOIN marketplace_nfts.sell_offer_index_xrp
-    ON o.marketplace_nft_id = n.id
-  WHERE n.id = $1
-    AND o.currency = 'XRP'
-    AND COALESCE(o.status, 'OPEN') = 'OPEN'
-  ORDER BY o.created_at ASC
+  SELECT sell_offer_index
+  FROM marketplace_sell_offers
+  WHERE marketplace_nft_id = $1
+    AND currency = 'XRP'
+    AND status = 'OPEN'
+  ORDER BY created_at ASC
   LIMIT 1
   `,
   [id]
 );
 
-if (!r.rows.length) {
-  return res.status(404).json({ error: "NFT not found" });
+if (!o.rows.length) {
+  return res.status(400).json({ error: "No XRP sell offer set for this NFT." });
 }
 
 const nft = r.rows[0];
@@ -485,7 +485,7 @@ const nft = r.rows[0];
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-   NFTokenSellOffer: nft.sell_offer_index
+  NFTokenSellOffer: o.rows[0].sell_offer_index
       },
      options: {
   submit: true,
