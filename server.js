@@ -1,6 +1,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -238,28 +239,6 @@ console.log("LIST_DB_OK", { rows: r.rowCount, nft: r.rows?.[0]?.id, submission_i
 const ids = Array.isArray(nft.nftoken_ids)
   ? nft.nftoken_ids
   : JSON.parse(nft.nftoken_ids || "[]");
-// ✅ Quantity=1: pick the first minted NFTokenID from submissions.nftoken_ids
-// (This fixes "NFT token not set" because new rows often don't have marketplace_nfts.nftoken_id yet)
-const tokenIdFromSubmission = Array.isArray(ids) && ids.length ? String(ids[0]) : null;
-
-if (!tokenIdFromSubmission) {
-  return res.status(400).json({ error: "No minted NFTokenID found for this submission" });
-}
-
-// Optional but recommended: persist it so future list/pay flows have nft.nftoken_id
-if (!nft.nftoken_id) {
-  await pool.query(
-    `
-    UPDATE marketplace_nfts
-    SET nftoken_id = $1
-    WHERE id = $2
-      AND (nftoken_id IS NULL OR nftoken_id = '')
-    `,
-    [tokenIdFromSubmission, marketplace_nft_id]
-  );
-}
-
-ledgerNFT = { NFTokenID: tokenIdFromSubmission };
 
 const existing = await pool.query(
   `
@@ -274,42 +253,33 @@ const alreadyListed = new Set(
   existing.rows.map(r => String(r.nftoken_id).toUpperCase())
 );
 
-let ledgerNFT; // <-- ADD THIS ONCE, before both paths
+// 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
+// and is also one of the minted ids + not already listed
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
 
-if (false) {
-  // 🔁 batch / quantity >1 logic (disabled, preserved)
-  const acct = await xrplClient.request({
-    command: "account_nfts",
-    account: nft.creator_wallet
-  });
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
 
-  const expectedURI = xrpl
-    .convertStringToHex(`ipfs://${nft.metadata_cid}`)
-    .toUpperCase();
+const idSet = new Set(ids.map(id => String(id).toUpperCase()));
 
-  const idSet = new Set(ids.map(id => String(id).toUpperCase()));
+const matching = acct.result.account_nfts.filter(n =>
+  n.NFTokenID &&
+  idSet.has(String(n.NFTokenID).toUpperCase()) &&
+  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
+  n.URI?.toUpperCase() === expectedURI
+);
 
-  const matching = acct.result.account_nfts.filter(n =>
-    n.NFTokenID &&
-    idSet.has(String(n.NFTokenID).toUpperCase()) &&
-    !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
-    n.URI?.toUpperCase() === expectedURI
-  );
-
-  if (!matching.length) {
-    return res.status(400).json({ error: "Correct NFT not found on XRPL" });
-  }
-
-  ledgerNFT = matching.sort((a, b) =>
-    a.NFTokenID.localeCompare(b.NFTokenID)
-  )[0];
+if (!matching.length) {
+  return res.status(400).json({ error: "Correct NFT not found on XRPL" });
 }
 
-// ✅ Quantity = 1 path (proven working — ACTIVE)
-
-ledgerNFT = {
-  NFTokenID: String(nft.nftoken_id)
-};
+const ledgerNFT = matching.sort((a, b) =>
+  a.NFTokenID.localeCompare(b.NFTokenID)
+)[0];
 
     const Amount =
       currency === "XRP"
@@ -781,20 +751,16 @@ app.post("/api/xaman/webhook", async (req, res) => {
     ) {
       return res.json({ ok: true });
     }
-const txid = p.payloadResponse.txid;
-const metaBlob = p?.custom_meta?.blob;
 
-if (!metaBlob) {
-  return res.json({ ok: true });
-}
-
+    const txid = p.payloadResponse.txid;
+    const metaBlob = p?.custom_meta?.blob;
 // ------------------------------
 // SAVE MINTED NFT (NFTokenMint) — REQUIRED
 // ------------------------------
 if (p?.txjson?.TransactionType === "NFTokenMint") {
-  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
+  const metaBlob = p?.custom_meta?.blob;
 
-    
+  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
     const minted = p.meta.AffectedNodes
       .filter(n => n.CreatedNode?.LedgerEntryType === "NFTokenPage")
       .flatMap(n =>
