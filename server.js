@@ -452,59 +452,61 @@ app.get("/api/market/all", async (_, res) => {
 });
 
 // ------------------------------
-// PAY XRP (WORKING)
+// PAY XRP (FIXED)
 // ------------------------------
 app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
 
-const r = await pool.query(
-  "SELECT * FROM marketplace_nfts WHERE id=$1",
-  [id]
-);
-const result = await pool.query(
-  `
-  SELECT
-    n.*,
-    o.sell_offer_index
-  FROM marketplace_nfts n
-  JOIN marketplace_sell_offers o
-    ON o.marketplace_nft_id = n.id
-  WHERE n.id = $1
-    AND o.currency = 'XRP'
-    AND COALESCE(o.status, 'OPEN') = 'OPEN'
-  ORDER BY o.created_at ASC
-  LIMIT 1
-  `,
-  [id]
-);
+    const nftRes = await pool.query(
+      "SELECT * FROM marketplace_nfts WHERE id=$1",
+      [id]
+    );
 
-if (!result.rows.length) {
-  return res.status(400).json({ error: "No XRP sell offer set for this NFT." });
-}
+    if (!nftRes.rows.length) {
+      return res.status(404).json({ error: "NFT not found" });
+    }
 
-const nft = result.rows[0];
+    // pull the oldest OPEN XRP sell offer for this marketplace NFT
+    const offerRes = await pool.query(
+      `
+      SELECT sell_offer_index
+      FROM marketplace_sell_offers
+      WHERE marketplace_nft_id = $1
+        AND currency = 'XRP'
+        AND COALESCE(status,'OPEN') = 'OPEN'
+      ORDER BY created_at ASC
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!offerRes.rows.length) {
+      return res.status(400).json({ error: "No XRP sell offer set for this NFT." });
+    }
+
+    const sellOfferIndex = String(offerRes.rows[0].sell_offer_index);
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-  NFTokenSellOffer: nft.sell_offer_index
+        NFTokenSellOffer: sellOfferIndex
       },
-     options: {
-  submit: true,
-  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
-  return_url: {
-    web: "https://centerforcreators.com/nft-creator",
-    app: "https://centerforcreators.com/nft-creator"
-  }
+      options: {
+        submit: true,
+        webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+        return_url: {
+          web: "https://centerforcreators.com/nft-creator",
+          app: "https://centerforcreators.com/nft-creator"
+        }
       },
-    custom_meta: {
-  blob: {
-    nft_id: id,
-   sell_offer_index: nft.sell_offer_index,
-    currency: "XRP"
-  }
-}
+      custom_meta: {
+        blob: {
+          nft_id: id,
+          sell_offer_index: sellOfferIndex,
+          currency: "XRP"
+        }
+      }
     };
 
     const xumm = await axios.post(
@@ -518,11 +520,17 @@ const nft = result.rows[0];
       }
     );
 
-    res.json({ link: xumm.data.next.always });
+    return res.json({ link: xumm.data.next.always });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Buy failed" });
+    console.error("pay-xrp error:", e?.response?.data || e.message);
+    return res.status(500).json({ error: "Buy failed" });
   }
+});
+
+// alias for older frontend calls (keeps existing UI working)
+app.post("/api/pay-xrp", (req, res) => {
+  req.url = "/api/market/pay-xrp";
+  return app._router.handle(req, res);
 });
 
 
