@@ -464,7 +464,7 @@ const r = await pool.query(
     n.*,
     o.sell_offer_index
   FROM marketplace_nfts n
-  JOIN marketplace_sell_offers o
+  JOIN marketplace_nfts.sell_offer_index_xrp
     ON o.marketplace_nft_id = n.id
   WHERE n.id = $1
     AND o.currency = 'XRP'
