@@ -404,9 +404,6 @@ app.post("/api/market/pay-xrp", async (req, res) => {
     }
 
    const nft = r.rows[0];
-if (!nft.sell_offer_index_xrp && !nft.sell_offer_index) {
-  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
-}
 
     const payload = {
       txjson: {
