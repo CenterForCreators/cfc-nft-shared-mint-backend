@@ -1,5 +1,6 @@
 
 
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -18,7 +19,7 @@ async function pollForSellOffer({
    
 const offers = await client.request({
   command: "nft_sell_offers",
-  nft_id: ledgerNFT.NFTokenID
+nft_id: nftokenId 
 });
 
 if (offers.result?.offers?.length) {
@@ -94,6 +95,35 @@ async function initDB() {
     ALTER TABLE marketplace_nfts
     ADD COLUMN IF NOT EXISTS sell_offer_index TEXT;
   `);
+    await pool.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_sell_offers (
+      id SERIAL PRIMARY KEY,
+      marketplace_nft_id INTEGER NOT NULL,
+      nftoken_id TEXT NOT NULL,
+      sell_offer_index TEXT NOT NULL,
+      currency TEXT NOT NULL,
+      status TEXT DEFAULT 'OPEN',
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // sell_offer_index must be unique (one offer index = one ledger object)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS marketplace_sell_offers_offer_uq
+    ON marketplace_sell_offers (sell_offer_index);
+  `);
+
+  // prevent duplicate rows for same NFT token listing
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS marketplace_sell_offers_token_uq
+    ON marketplace_sell_offers (marketplace_nft_id, nftoken_id, currency);
+  `);
+
+  // fast lookup for Pay buttons
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS marketplace_sell_offers_open_idx
+    ON marketplace_sell_offers (marketplace_nft_id, currency, status, created_at);
+  `);
 }
 
 async function initOrdersDB() {
@@ -167,19 +197,31 @@ app.post("/api/list-on-marketplace", async (req, res) => {
 
   try {
     const { marketplace_nft_id, currency } = req.body;
+    console.log("LIST_START", { marketplace_nft_id, currency });
 
     if (!marketplace_nft_id || !currency) {
       return res.status(400).json({ error: "Missing params" });
     }
 
     const r = await pool.query(
-      `
-    SELECT id, creator_wallet, metadata_cid, price_xrp, price_rlusd, nftoken_id
-FROM marketplace_nfts
-WHERE id=$1
-      `,
-      [marketplace_nft_id]
-    );
+  `
+ SELECT
+  m.id,
+  m.submission_id,
+  m.creator_wallet,
+  m.metadata_cid,
+  m.price_xrp,
+  m.price_rlusd,
+  m.nftoken_id,
+  s.nftoken_ids
+FROM marketplace_nfts m
+JOIN submissions s
+  ON s.id = m.submission_id
+WHERE m.id=$1
+  `,
+  [marketplace_nft_id]
+);
+console.log("LIST_DB_OK", { rows: r.rowCount, nft: r.rows?.[0]?.id, submission_id: r.rows?.[0]?.submission_id });
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Marketplace NFT not found" });
@@ -188,10 +230,55 @@ WHERE id=$1
     const nft = r.rows[0];
 
     // Connect XRPL
+    console.log("LIST_XRPL_CONNECTING", { XRPL_NETWORK: process.env.XRPL_NETWORK });
     xrplClient = new xrpl.Client(process.env.XRPL_NETWORK);
     await xrplClient.connect();
-// Do NOT pre-check XRPL — allow Xaman to handle signing
-const ledgerNFT = { NFTokenID: nft.nftoken_id };
+    console.log("LIST_XRPL_CONNECTED");
+
+const ids = Array.isArray(nft.nftoken_ids)
+  ? nft.nftoken_ids
+  : JSON.parse(nft.nftoken_ids || "[]");
+
+const existing = await pool.query(
+  `
+  SELECT nftoken_id
+  FROM marketplace_sell_offers
+  WHERE marketplace_nft_id = $1
+    AND currency = $2
+  `,
+  [marketplace_nft_id, currency]
+);
+const alreadyListed = new Set(
+  existing.rows.map(r => String(r.nftoken_id).toUpperCase())
+);
+
+// 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
+// and is also one of the minted ids + not already listed
+const acct = await xrplClient.request({
+  command: "account_nfts",
+  account: nft.creator_wallet
+});
+
+const expectedURI = xrpl
+  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+  .toUpperCase();
+
+const idSet = new Set(ids.map(id => String(id).toUpperCase()));
+
+const matching = acct.result.account_nfts.filter(n =>
+  n.NFTokenID &&
+  idSet.has(String(n.NFTokenID).toUpperCase()) &&
+  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
+  n.URI?.toUpperCase() === expectedURI
+);
+
+if (!matching.length) {
+  return res.status(400).json({ error: "Correct NFT not found on XRPL" });
+}
+
+const ledgerNFT = matching.sort((a, b) =>
+  a.NFTokenID.localeCompare(b.NFTokenID)
+)[0];
 
     const Amount =
       currency === "XRP"
@@ -203,22 +290,24 @@ const ledgerNFT = { NFTokenID: nft.nftoken_id };
           };
 
     // 🔹 CREATE SELL OFFER (NO PRE-CHECK)
+    console.log("LIST_XAMAN_POSTING");
     const xumm = await axios.post(
       "https://xumm.app/api/v1/platform/payload",
       {
         txjson: {
           TransactionType: "NFTokenCreateOffer",
           Account: nft.creator_wallet,
-          NFTokenID: ledgerNFT.NFTokenID,
+         NFTokenID: String(ledgerNFT.NFTokenID),
           Amount,
           Flags: 1
         },
         options: {
-          submit: true,
-          return_url: {
-            web: "https://centerforcreators.com/nft-creator",
-            app: "https://centerforcreators.com/nft-creator"
-          }
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
         },
         custom_meta: {
   blob: {
@@ -235,36 +324,15 @@ const ledgerNFT = { NFTokenID: nft.nftoken_id };
       }
     );
 
-// ⏳ POLL XRPL FOR CREATED SELL OFFER (RESTORED — PROVEN WORKING)
-let sellOfferIndex = null;
 
-for (let i = 0; i < 12; i++) {
-  await new Promise(r => setTimeout(r, 2000));
-
-  const offers = await xrplClient.request({
-    command: "nft_sell_offers",
-    nft_id: nft.nftoken_id
-  });
-
-  if (offers.result?.offers?.length) {
-    sellOfferIndex = offers.result.offers[0].nft_offer_index;
-    break;
-  }
-}
-
-if (!sellOfferIndex) {
-  return res.status(500).json({ error: "Sell offer not found on XRPL" });
-}
-
-await pool.query(
-  "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-  [sellOfferIndex, marketplace_nft_id]
-);
 
     return res.json({ link: xumm.data.next.always });
 
   } catch (e) {
-    console.error("list-on-marketplace error:", e?.response?.data || e.message);
+   console.error("LIST_ERROR_MESSAGE", e?.message);
+console.error("LIST_ERROR_RESPONSE", e?.response?.status, e?.response?.data);
+console.error("LIST_ERROR_STACK", e?.stack);
+
     return res.status(500).json({ error: "List failed" });
   } finally {
     if (xrplClient) {
@@ -298,43 +366,43 @@ app.post("/api/add-nft", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    await pool.query(
-      `
-      INSERT INTO marketplace_nfts
-      (
-        submission_id,
-        name,
-        description,
-        category,
-        image_cid,
-        metadata_cid,
-        price_xrp,
-        price_rlusd,
-        creator_wallet,
-        terms,
-        website,
-        quantity,
-        minted
-      )
-      VALUES
-      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
-      ON CONFLICT DO NOTHING
-      `,
-      [
-        submission_id,
-        name,
-        description || "",
-        category || "all",
-        image_cid || null,
-        metadata_cid,
-        price_xrp || null,
-        price_rlusd || null,
-        creator_wallet,
-        terms || "",
-        website || "",
-        Number(quantity || 1)
-      ]
-    );
+  await pool.query(
+  `
+  INSERT INTO marketplace_nfts
+  (
+    submission_id,
+    name,
+    description,
+    category,
+    image_cid,
+    metadata_cid,
+    price_xrp,
+    price_rlusd,
+    creator_wallet,
+    terms,
+    website,
+    quantity,
+    minted
+  )
+  VALUES
+  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+  ON CONFLICT DO NOTHING
+  `,
+  [
+    submission_id,
+    name,
+    description || "",
+    category || "all",
+    image_cid || null,
+    metadata_cid,
+    price_xrp || null,
+    price_rlusd || null,
+    creator_wallet,
+    terms || "",
+    website || "",
+    Number(quantity || 1)
+  ]
+);
 
     res.json({ ok: true });
   } catch (e) {
@@ -355,16 +423,23 @@ app.get("/api/market/all", async (_, res) => {
       return res.json(marketAllCache.data);
     }
 
-   const r = await pool.query(`
+  const r = await pool.query(`
   SELECT
-    *,
-    quantity AS quantity_remaining,
-    (GREATEST(COALESCE(quantity,0),0)=0) AS sold_out
-  FROM marketplace_nfts
-  WHERE minted = true
-    AND sold = false
-    AND COALESCE(is_delisted, false) = false
-  ORDER BY created_at DESC
+    n.*,
+    n.quantity AS quantity_remaining,
+    (GREATEST(COALESCE(n.quantity,0),0)=0) AS sold_out,
+    (
+      SELECT COUNT(*)
+      FROM marketplace_sell_offers o
+      WHERE o.marketplace_nft_id = n.id
+        AND o.currency = 'XRP'
+        AND COALESCE(o.status,'OPEN')='OPEN'
+    )::int AS xrp_open_offers
+  FROM marketplace_nfts n
+  WHERE n.minted = true
+    AND n.sold = false
+    AND COALESCE(n.is_delisted, false) = false
+  ORDER BY n.created_at DESC
 `);
 
     marketAllCache = { ts: now, data: r.rows };
@@ -383,45 +458,53 @@ app.post("/api/market/pay-xrp", async (req, res) => {
   try {
     const { id } = req.body;
 
-   const r = await pool.query(
+const r = await pool.query(
   `
   SELECT
     n.*,
     o.sell_offer_index
   FROM marketplace_nfts n
-  marketplace_nfts.sell_offer_index_xrp
+  JOIN marketplace_sell_offers o
     ON o.marketplace_nft_id = n.id
-  WHERE n.id=$1
-    AND o.status='OPEN'
+  WHERE n.id = $1
+    AND o.currency = 'XRP'
+    AND COALESCE(o.status, 'OPEN') = 'OPEN'
   ORDER BY o.created_at ASC
   LIMIT 1
   `,
   [id]
 );
 
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "NFT not found" });
-    }
+if (!r.rows.length) {
+  return res.status(404).json({ error: "NFT not found" });
+}
 
-   const nft = r.rows[0];
+const nft = r.rows[0];
+
+if (!nft.sell_offer_index_xrp) {
+  return res.status(400).json({ error: "No XRP sell offer set for this NFT. Run create-sell-offer first." });
+}
 
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-       NFTokenSellOffer: nft.sell_offer_index
+   NFTokenSellOffer: nft.sell_offer_index
       },
-      options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
+     options: {
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
       },
-      custom_meta: {
-        blob: {
-          nft_id: id
-        }
-      }
+    custom_meta: {
+  blob: {
+    nft_id: id,
+    sell_offer_index: nft.sell_offer_index_xrp,
+    currency: "XRP"
+  }
+}
     };
 
     const xumm = await axios.post(
@@ -471,11 +554,12 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
         NFTokenSellOffer: nft.sell_offer_index_rlusd
       },
       options: {
-        submit: true,
-        return_url: {
-          web: "https://centerforcreators.com/nft-marketplace",
-          app: "https://centerforcreators.com/nft-marketplace"
-        }
+  submit: true,
+  webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
+  return_url: {
+    web: "https://centerforcreators.com/nft-creator",
+    app: "https://centerforcreators.com/nft-creator"
+  }
       },
       custom_meta: {
         blob: {
@@ -640,49 +724,97 @@ app.post("/api/orders/redeem", async (req, res) => {
 // ------------------------------
 const PORT = process.env.PORT || 5000;
 
-
 // ------------------------------
-// XAMAN WEBHOOK (PURCHASE ONLY — QUANTITY SAFE)
+// XAMAN WEBHOOK (SELL OFFER + PURCHASE — QUANTITY SAFE)
 // ------------------------------
 app.post("/api/xaman/webhook", async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const p = req.body?.payload;
+    const p = req.body;
 
+    console.log("WEBHOOK_RAW_BODY", JSON.stringify(p, null, 2));
+
+    // ✅ only act on signed successful payloads
     if (
-      p?.response?.dispatched_result !== "tesSUCCESS" ||
-      p?.meta?.signed !== true
+      p?.payloadResponse?.signed !== true ||
+      !p?.payloadResponse?.txid
     ) {
       return res.json({ ok: true });
     }
 
-    const blob = p?.custom_meta?.blob;
-    const txid = p?.response?.txid;
-    // ------------------------------
-// SAVE SELL OFFER (NFTokenCreateOffer)
+    const txid = p.payloadResponse.txid;
+    const metaBlob = p?.custom_meta?.blob;
 // ------------------------------
-if (p?.txjson?.TransactionType === "NFTokenCreateOffer") {
-  const meta = p?.custom_meta?.blob;
-const offerNode = p?.meta?.AffectedNodes?.find(
-  n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-);
+// SAVE MINTED NFT (NFTokenMint) — REQUIRED
+// ------------------------------
+if (p?.txjson?.TransactionType === "NFTokenMint") {
+  const metaBlob = p?.custom_meta?.blob;
 
-const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
+  if (metaBlob?.submission_id && p?.meta?.AffectedNodes) {
+    const minted = p.meta.AffectedNodes
+      .filter(n => n.CreatedNode?.LedgerEntryType === "NFTokenPage")
+      .flatMap(n =>
+        n.CreatedNode.NewFields?.NFTokens?.map(t => t.NFToken.NFTokenID) || []
+      );
 
-  if (meta?.marketplace_nft_id && offerIndex) {
+    if (minted.length) {
+      await pool.query(
+        `
+        UPDATE submissions
+        SET nftoken_ids = COALESCE(nftoken_ids, '[]'::jsonb) || $1::jsonb
+        WHERE id = $2
+        `,
+        [JSON.stringify(minted), metaBlob.submission_id]
+      );
+    }
+  }
+
+  return res.json({ ok: true });
+}
+
+  // ------------------------------
+// SAVE SELL OFFER (NFTokenCreateOffer) — XRPL FETCH (REQUIRED)
+// ------------------------------
+const tx = await (async () => {
+  const c = new xrpl.Client(process.env.XRPL_NETWORK);
+  await c.connect();
+  const r = await c.request({
+    command: "tx",
+    transaction: txid,
+    binary: false
+  });
+  await c.disconnect();
+  return r.result;
+})();
+
+if (tx?.TransactionType === "NFTokenCreateOffer") {
+  const nodes = tx.meta?.AffectedNodes || [];
+
+  const offerIndex =
+    nodes.find(n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.CreatedNode?.LedgerIndex ||
+    nodes.find(n => n.ModifiedNode?.LedgerEntryType === "NFTokenOffer")
+      ?.ModifiedNode?.LedgerIndex ||
+    null;
+
+  if (
+    metaBlob?.marketplace_nft_id &&
+    offerIndex &&
+    tx?.NFTokenID
+  ) {
     await pool.query(
       `
       INSERT INTO marketplace_sell_offers
-        (marketplace_nft_id, nftoken_id, sell_offer_index, currency)
-      VALUES ($1,$2,$3,$4)
+        (marketplace_nft_id, nftoken_id, sell_offer_index, currency, status)
+      VALUES ($1,$2,$3,$4,'OPEN')
       ON CONFLICT DO NOTHING
       `,
       [
-        meta.marketplace_nft_id,
-       p.txjson.NFTokenID,
-        offerIndex,
-        meta.currency || "XRP"
+        metaBlob.marketplace_nft_id,
+        String(tx.NFTokenID),
+        String(offerIndex),
+        metaBlob.currency || "XRP"
       ]
     );
   }
@@ -690,18 +822,19 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
   return res.json({ ok: true });
 }
 
-    const buyer = p?.response?.account;
-
-    if (!txid || !blob?.nft_id || !buyer) {
+    // ------------------------------
+    // PURCHASE (NFTokenAcceptOffer)
+    // ------------------------------
+    const buyer = p?.payloadResponse?.account;
+    if (!metaBlob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
 
     await client.query("BEGIN");
 
-    // 🔹 LOCK NFT ROW
     const nftRes = await client.query(
       "SELECT * FROM marketplace_nfts WHERE id=$1 FOR UPDATE",
-      [blob.nft_id]
+      [metaBlob.nft_id]
     );
 
     if (!nftRes.rows.length || nftRes.rows[0].quantity <= 0) {
@@ -711,7 +844,6 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
 
     const nft = nftRes.rows[0];
 
-    // 🔹 RECORD ORDER (idempotent)
     const inserted = await client.query(
       `
       INSERT INTO orders
@@ -723,8 +855,8 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
       [
         nft.id,
         buyer,
-        blob.currency === "RLUSD" ? nft.price_rlusd : nft.price_xrp,
-        blob.currency,
+        metaBlob.currency === "RLUSD" ? nft.price_rlusd : nft.price_xrp,
+        metaBlob.currency,
         txid
       ]
     );
@@ -734,7 +866,6 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
       return res.json({ ok: true });
     }
 
-    // ✅ DECREMENT QUANTITY **ONLY ON PURCHASE**
     await client.query(
       `
       UPDATE marketplace_nfts
@@ -744,6 +875,17 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
       `,
       [nft.id]
     );
+
+    if (metaBlob?.sell_offer_index) {
+      await client.query(
+        `
+        UPDATE marketplace_sell_offers
+        SET status='USED'
+        WHERE sell_offer_index=$1
+        `,
+        [String(metaBlob.sell_offer_index)]
+      );
+    }
 
     await client.query("COMMIT");
     res.json({ ok: true });
@@ -756,6 +898,7 @@ const offerIndex = offerNode?.CreatedNode?.LedgerIndex;
     client.release();
   }
 });
+
 
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
