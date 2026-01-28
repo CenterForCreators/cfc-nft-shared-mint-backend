@@ -252,33 +252,45 @@ const alreadyListed = new Set(
   existing.rows.map(r => String(r.nftoken_id).toUpperCase())
 );
 
-// 🔁 PROVEN WORKING: pick the NFT that matches THIS submission's metadata CID (URI),
-// and is also one of the minted ids + not already listed
-const acct = await xrplClient.request({
-  command: "account_nfts",
-  account: nft.creator_wallet
-});
+let ledgerNFT; // <-- ADD THIS ONCE, before both paths
 
-const expectedURI = xrpl
-  .convertStringToHex(`ipfs://${nft.metadata_cid}`)
-  .toUpperCase();
+if (false) {
+  // 🔁 batch / quantity >1 logic (disabled, preserved)
+  const acct = await xrplClient.request({
+    command: "account_nfts",
+    account: nft.creator_wallet
+  });
 
-const idSet = new Set(ids.map(id => String(id).toUpperCase()));
+  const expectedURI = xrpl
+    .convertStringToHex(`ipfs://${nft.metadata_cid}`)
+    .toUpperCase();
 
-const matching = acct.result.account_nfts.filter(n =>
-  n.NFTokenID &&
-  idSet.has(String(n.NFTokenID).toUpperCase()) &&
-  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
-  n.URI?.toUpperCase() === expectedURI
-);
+  const idSet = new Set(ids.map(id => String(id).toUpperCase()));
 
-if (!matching.length) {
-  return res.status(400).json({ error: "Correct NFT not found on XRPL" });
+  const matching = acct.result.account_nfts.filter(n =>
+    n.NFTokenID &&
+    idSet.has(String(n.NFTokenID).toUpperCase()) &&
+    !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
+    n.URI?.toUpperCase() === expectedURI
+  );
+
+  if (!matching.length) {
+    return res.status(400).json({ error: "Correct NFT not found on XRPL" });
+  }
+
+  ledgerNFT = matching.sort((a, b) =>
+    a.NFTokenID.localeCompare(b.NFTokenID)
+  )[0];
 }
 
-const ledgerNFT = matching.sort((a, b) =>
-  a.NFTokenID.localeCompare(b.NFTokenID)
-)[0];
+// ✅ Quantity = 1 path (proven working — ACTIVE)
+if (!nft.nftoken_id) {
+  return res.status(400).json({ error: "NFT token not set" });
+}
+
+ledgerNFT = {
+  NFTokenID: String(nft.nftoken_id)
+};
 
     const Amount =
       currency === "XRP"
