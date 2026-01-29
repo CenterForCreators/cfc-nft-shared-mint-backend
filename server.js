@@ -282,7 +282,7 @@ if (false) {
     a.NFTokenID.localeCompare(b.NFTokenID)
   )[0];
 }
-
+if (false) {
 // ✅ Quantity = 1 path (proven working — ACTIVE)
 if (!nft.nftoken_id) {
   return res.status(400).json({ error: "NFT token not set" });
@@ -291,7 +291,7 @@ if (!nft.nftoken_id) {
 ledgerNFT = {
   NFTokenID: String(nft.nftoken_id)
 };
-
+}
     const Amount =
       currency === "XRP"
         ? String(Math.floor(Number(nft.price_xrp) * 1_000_000))
