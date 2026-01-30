@@ -248,6 +248,14 @@ const existing = await pool.query(
   `,
   [marketplace_nft_id, currency]
 );
+    // ✅ Quantity = 1 enforcement (proven)
+// If one sell offer already exists, block further listing
+if (Number(nft.quantity) === 1 && existing.rows.length >= 1) {
+  return res.status(400).json({
+    error: "This NFT is already listed"
+  });
+}
+
 const alreadyListed = new Set(
   existing.rows.map(r => String(r.nftoken_id).toUpperCase())
 );
