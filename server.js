@@ -263,16 +263,12 @@ let ledgerNFT; // <-- ADD THIS ONCE, before both paths
   const expectedURI = xrpl
     .convertStringToHex(`ipfs://${nft.metadata_cid}`)
     .toUpperCase();
-
-  const idSet = new Set(ids.map(id => String(id).toUpperCase()));
-
-  const matching = acct.result.account_nfts.filter(n =>
-    n.NFTokenID &&
-    idSet.has(String(n.NFTokenID).toUpperCase()) &&
-    !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
-    n.URI?.toUpperCase() === expectedURI
-  );
-
+const matching = acct.result.account_nfts.filter(n =>
+  n.NFTokenID &&
+  !alreadyListed.has(String(n.NFTokenID).toUpperCase()) &&
+  n.URI?.toUpperCase() === expectedURI
+);
+ 
   if (!matching.length) {
     return res.status(400).json({ error: "Correct NFT not found on XRPL" });
   }
