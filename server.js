@@ -749,12 +749,12 @@ app.post("/api/xaman/webhook", async (req, res) => {
     console.log("WEBHOOK_RAW_BODY", JSON.stringify(p, null, 2));
 
     // ✅ only act on signed successful payloads
-    if (
-      p?.payloadResponse?.signed !== true ||
-      !p?.payloadResponse?.txid
-    ) {
-      return res.json({ ok: true });
-    }
+  if (
+  p?.payload?.response?.signed !== true ||
+  !p?.payload?.response?.txid
+) {
+  return res.json({ ok: true });
+}
 
     const txid = p.payloadResponse.txid;
     const metaBlob = p?.custom_meta?.blob;
@@ -838,7 +838,7 @@ if (tx?.TransactionType === "NFTokenCreateOffer") {
     // ------------------------------
     // PURCHASE (NFTokenAcceptOffer)
     // ------------------------------
-    const buyer = p?.payloadResponse?.account;
+   const buyer = p?.payload?.response?.account;
     if (!metaBlob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
