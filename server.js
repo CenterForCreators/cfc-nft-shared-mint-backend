@@ -747,7 +747,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
     const p = req.body;
 const payload = p?.payload;
 const response = payload?.response;
-
+const metaBlob = payload?.custom_meta?.blob;
     console.log("WEBHOOK_RAW_BODY", JSON.stringify(p, null, 2));
 
     // ✅ only act on signed successful payloads
@@ -759,7 +759,7 @@ if (
   return res.json({ ok: true });
 }
     const txid = response.txid;
-    const metaBlob = p?.custom_meta?.blob;
+   
 // ------------------------------
 // SAVE MINTED NFT (NFTokenMint) — REQUIRED
 // ------------------------------
