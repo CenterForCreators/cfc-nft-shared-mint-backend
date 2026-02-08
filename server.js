@@ -676,7 +676,7 @@ const r = await pool.query(
   WHERE o.buyer_wallet = $1
   ORDER BY o.created_at DESC
   `,
-  [wallet]
+ [buyer]
 );
 
 res.json(r.rows);
