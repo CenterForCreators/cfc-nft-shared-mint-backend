@@ -668,20 +668,22 @@ app.post("/api/admin/create-sell-offer", async (req, res) => {
 // GET ORDERS BY WALLET
 // ------------------------------
 app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
-const r = await pool.query(
-  `
-  SELECT o.*, n.name, n.image_cid, n.metadata_cid, n.submission_id
-  FROM orders o
-  JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
-  WHERE o.buyer_wallet = $1
-  ORDER BY o.created_at DESC
-  `,
- [buyer]
-);
+  const { wallet } = req.params;
 
-res.json(r.rows);
+  const r = await pool.query(
+    `
+    SELECT o.*, n.name, n.image_cid, n.metadata_cid, n.submission_id
+    FROM orders o
+    JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
+    WHERE o.buyer_wallet = $1
+    ORDER BY o.created_at DESC
+    `,
+    [wallet]
+  );
 
+  res.json(r.rows);
 });
+
 app.post("/api/market/toggle-delist", async (req, res) => {
   try {
     const { submission_id, delist } = req.body;
