@@ -790,7 +790,10 @@ if (p?.txjson?.TransactionType === "NFTokenMint") {
   // ------------------------------
 // SAVE SELL OFFER (NFTokenCreateOffer) — XRPL FETCH (REQUIRED)
 // ------------------------------
-const tx = await (async () => {
+
+let tx = null;
+
+try {
   const c = new xrpl.Client(process.env.XRPL_NETWORK);
   await c.connect();
   const r = await c.request({
@@ -799,8 +802,10 @@ const tx = await (async () => {
     binary: false
   });
   await c.disconnect();
-  return r.result;
-})();
+  tx = r.result;
+} catch (e) {
+  console.warn("XRPL tx lookup failed (non-fatal):", e?.data?.error || e.message);
+}
 
 if (tx?.TransactionType === "NFTokenCreateOffer") {
   const nodes = tx.meta?.AffectedNodes || [];
