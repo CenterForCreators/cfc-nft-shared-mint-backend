@@ -844,7 +844,7 @@ if (tx?.TransactionType === "NFTokenCreateOffer") {
     // ------------------------------
     // PURCHASE (NFTokenAcceptOffer)
     // ------------------------------
-  const buyer = response?.account;
+ const buyer = tx?.Account;
     if (!metaBlob?.nft_id || !buyer) {
       return res.json({ ok: true });
     }
