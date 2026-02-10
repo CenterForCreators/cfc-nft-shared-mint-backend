@@ -672,14 +672,16 @@ app.get("/api/orders/by-wallet/:wallet", async (req, res) => {
 
  const r = await pool.query(
   `
-  SELECT
-    o.*,
-    n.name,
-    n.image_cid,
-    n.metadata_cid,
-    n.submission_id
-  FROM orders o
-  JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
+ SELECT 
+  o.*,
+  n.name,
+  n.image_cid,
+  n.metadata_cid,
+  n.submission_id,
+  s.content_cid
+FROM orders o
+JOIN marketplace_nfts n ON n.id = o.marketplace_nft_id
+JOIN submissions s ON s.id = n.submission_id
   WHERE o.buyer_wallet = $1
   ORDER BY o.created_at DESC
   `,
