@@ -756,13 +756,17 @@ app.post("/api/claim-nft-reward", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Missing wallet or submission_id" });
     }
 
-    // IMPORTANT: send them back to the same page they were on
-    const returnUrl = return_to || "https://centerforcreators.com/nft-marketplace";
+    const returnUrl =
+      return_to || "https://centerforcreators.com/nft-marketplace";
 
-    // Create a Xaman "SignIn" payload (same pattern you already use)
     const payload = await createXummPayload(
       { TransactionType: "SignIn" },
-      { action: "claim_nft_reward", wallet, submission_id, return_to: returnUrl }
+      {
+        action: "claim_nft_reward",
+        wallet,
+        submission_id,
+        return_to: returnUrl
+      }
     );
 
     return res.json({ ok: true, link: payload.link, uuid: payload.uuid });
