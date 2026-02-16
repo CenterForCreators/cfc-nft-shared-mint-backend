@@ -745,6 +745,32 @@ app.post("/api/orders/redeem", async (req, res) => {
 
 // ------------------------------
 const PORT = process.env.PORT || 5000;
+// -------------------------------
+// ONE-TIME NFT REWARD CLAIM (100 CFC) — creates Xaman SignIn
+// -------------------------------
+app.post("/api/claim-nft-reward", async (req, res) => {
+  try {
+    const { wallet, submission_id, return_to } = req.body || {};
+
+    if (!wallet || !submission_id) {
+      return res.status(400).json({ ok: false, error: "Missing wallet or submission_id" });
+    }
+
+    // IMPORTANT: send them back to the same page they were on
+    const returnUrl = return_to || "https://centerforcreators.com/nft-marketplace";
+
+    // Create a Xaman "SignIn" payload (same pattern you already use)
+    const payload = await createXummPayload(
+      { TransactionType: "SignIn" },
+      { action: "claim_nft_reward", wallet, submission_id, return_to: returnUrl }
+    );
+
+    return res.json({ ok: true, link: payload.link, uuid: payload.uuid });
+  } catch (e) {
+    console.error("claim-nft-reward error:", e);
+    return res.status(500).json({ ok: false, error: "Failed to create claim payload" });
+  }
+});
 
 // ------------------------------
 // XAMAN WEBHOOK (SELL OFFER + PURCHASE — QUANTITY SAFE)
@@ -767,7 +793,59 @@ if (
   return res.json({ ok: true });
 }
     const txid = response.txid;
-   
+ // ------------------------------
+// CLAIM NFT CFC REWARD (ONE-TIME)
+// ------------------------------
+if (metaBlob?.action === "claim_nft_reward") {
+  const { wallet, submission_id } = metaBlob;
+
+  // Prevent double-claim
+  const { rows } = await pool.query(
+    `
+    SELECT 1 FROM nft_reward_claims
+    WHERE wallet = $1 AND submission_id = $2
+    `,
+    [wallet, submission_id]
+  );
+
+  if (rows.length) {
+    return res.json({ ok: true }); // already claimed
+  }
+
+  // Send 100 CFC (reuse existing issuer logic)
+  const clientXRPL = new xrpl.Client(process.env.XRPL_NETWORK);
+  await clientXRPL.connect();
+
+  const issuerWallet = xrpl.Wallet.fromSeed(process.env.CFC_ISSUER_SEED);
+
+  const tx = {
+    TransactionType: "Payment",
+    Account: issuerWallet.address,
+    Destination: wallet,
+    Amount: {
+      currency: process.env.CFC_CURRENCY,
+      issuer: process.env.CFC_ISSUER,
+      value: "100"
+    }
+  };
+
+  const prepared = await clientXRPL.autofill(tx);
+  const signed = issuerWallet.sign(prepared);
+  await clientXRPL.submitAndWait(signed.tx_blob);
+  await clientXRPL.disconnect();
+
+  // Record claim
+  await pool.query(
+    `
+    INSERT INTO nft_reward_claims (wallet, submission_id)
+    VALUES ($1, $2)
+    `,
+    [wallet, submission_id]
+  );
+
+  return res.json({ ok: true });
+}
+  
 // ------------------------------
 // SAVE MINTED NFT (NFTokenMint) — REQUIRED
 // ------------------------------
