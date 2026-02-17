@@ -766,7 +766,7 @@ app.post("/api/claim-nft-reward", async (req, res) => {
     }
 
     const issuer = process.env.CFC_ISSUER;
-    const seed = process.env.FAUCET_SEED;
+   const seed = process.env.CREATOR_SEED;
     const currency = process.env.CFC_CURRENCY || "CFC";
 
     const xrplClient = new xrpl.Client(process.env.RIPPLED_URL || "wss://s1.ripple.com");
