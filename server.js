@@ -756,7 +756,7 @@ app.post("/api/claim-nft-reward", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Missing wallet or submission_id" });
     }
 
-    const { rows } = await client.query(
+   const { rows } = await pool.query(
       `SELECT 1 FROM nft_reward_claims WHERE wallet=$1 AND submission_id=$2`,
       [wallet, submission_id]
     );
@@ -791,7 +791,7 @@ app.post("/api/claim-nft-reward", async (req, res) => {
       return res.status(500).json({ ok: false, error: "XRPL payment failed" });
     }
 
-    await client.query(
+  await pool.query(
       `INSERT INTO nft_reward_claims (wallet, submission_id, claimed_at)
        VALUES ($1,$2,NOW())`,
       [wallet, submission_id]
