@@ -793,11 +793,11 @@ const currency = process.env.CFC_CURRENCY || "CFC";
       return res.status(500).json({ ok: false, error: "XRPL payment failed" });
     }
 
-  await pool.query(
-      `INSERT INTO nft_reward_claims (wallet, submission_id, claimed_at)
-       VALUES ($1,$2,NOW())`,
-      [wallet, submission_id]
-    );
+await pool.query(
+  `INSERT INTO nft_reward_claims (wallet, submission_id, last_claim_at)
+   VALUES ($1, $2, NOW())`,
+  [wallet, submission_id]
+); 
 
     res.json({ ok: true });
 
@@ -836,13 +836,12 @@ if (metaBlob?.action === "claim_nft_reward") {
   const { wallet, submission_id } = metaBlob;
 
   // Prevent double-claim
-  const { rows } = await pool.query(
-    `
-    SELECT 1 FROM nft_reward_claims
-    WHERE wallet = $1 AND submission_id = $2
-    `,
-    [wallet, submission_id]
-  );
+const { rows } = await pool.query(
+  `SELECT 1 FROM nft_reward_claims 
+   WHERE wallet=$1 
+   AND last_claim_at > NOW() - INTERVAL '24 hours'`,
+  [wallet]
+);
 
   if (rows.length) {
     return res.json({ ok: true }); // already claimed
