@@ -757,13 +757,15 @@ app.post("/api/claim-nft-reward", async (req, res) => {
     }
 
    const { rows } = await pool.query(
-      `SELECT 1 FROM nft_reward_claims WHERE wallet=$1 AND submission_id=$2`,
-      [wallet, submission_id]
-    );
+  `SELECT 1 FROM nft_reward_claims 
+   WHERE wallet=$1 
+   AND claimed_at > NOW() - INTERVAL '24 hours'`,
+  [wallet]
+);
 
-    if (rows.length) {
-      return res.status(403).json({ ok: false, error: "Reward already claimed" });
-    }
+if (rows.length) {
+  return res.json({ ok: false, error: "Already claimed in last 24h" });
+}
 
    const issuer = process.env.ISSUER_CLASSIC || process.env.CFC_ISSUER;
 const seed = process.env.ISSUER_SEED || process.env.CREATOR_SEED;
