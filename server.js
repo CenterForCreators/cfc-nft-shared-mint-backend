@@ -1039,7 +1039,48 @@ if (tx?.TransactionType === "NFTokenCreateOffer") {
     client.release();
   }
 });
+// ------------------------------
+// AI AGENT (NEW - SAFE ADDITION)
+// ------------------------------
+import OpenAI from "openai";
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+app.post("/agent", async (req, res) => {
+  try {
+    const { message, content } = req.body;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI assistant that ONLY answers based on the provided content. If the answer is not in the content, say you do not know."
+        },
+        {
+          role: "system",
+          content: content.slice(0, 12000)
+        },
+        {
+          role: "user",
+          content: message
+        }
+      ]
+    });
+
+    res.json({
+      reply: completion.choices[0].message.content
+    });
+
+  } catch (e) {
+    console.error("AI error:", e);
+    res.status(500).json({
+      reply: "Error processing request"
+    });
+  }
+});
 
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
