@@ -1050,24 +1050,24 @@ const openai = new OpenAI({
 
 app.post("/agent", async (req, res) => {
   try {
-    const { message, content } = req.body;
+    const { message, content, ai_prompt } = req.body;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        {
-          role: "system",
-          content: "You are an AI assistant that ONLY answers based on the provided content. If the answer is not in the content, say you do not know."
-        },
-        {
-          role: "system",
-          content: content.slice(0, 12000)
-        },
-        {
-          role: "user",
-          content: message
-        }
-      ]
+  {
+    role: "system",
+    content: ai_prompt
+  },
+  {
+    role: "system",
+    content: content
+  },
+  {
+    role: "user",
+    content: message
+  }
+]
     });
 
     res.json({
