@@ -789,16 +789,17 @@ const currency = process.env.CFC_CURRENCY || "CFC";
 
     await xrplClient.disconnect();
 
-    if (result.result.meta.TransactionResult !== "tesSUCCESS") {
-      return res.status(500).json({ ok: false, error: "XRPL payment failed" });
-    }
-
+    // ✅ INSERT FIRST (ALWAYS runs)
 await pool.query(
   `INSERT INTO nft_reward_claims (wallet, submission_id, last_claim_at)
    VALUES ($1, $2, NOW())`,
   [wallet, submission_id]
-); 
+);
 
+// THEN check XRPL result
+if (result.result.meta.TransactionResult !== "tesSUCCESS") {
+  return res.status(500).json({ ok: false, error: "XRPL payment failed" });
+}
     res.json({ ok: true });
 
   } catch (e) {
