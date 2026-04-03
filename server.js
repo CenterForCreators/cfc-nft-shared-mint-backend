@@ -124,6 +124,12 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS marketplace_sell_offers_open_idx
     ON marketplace_sell_offers (marketplace_nft_id, currency, status, created_at);
   `);
+  await pool.query(`
+  CREATE TABLE IF NOT EXISTS faucet_claims (
+    wallet TEXT PRIMARY KEY,
+    last_claim_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`);
 }
 
 async function initOrdersDB() {
@@ -742,7 +748,124 @@ app.post("/api/orders/redeem", async (req, res) => {
   res.json({ ok: true });
 
 });
+app.post("/api/faucet-claim", async (req, res) => {
+  const { wallet } = req.body || {};
 
+  if (!wallet) {
+    return res.status(400).json({ ok: false, error: "Missing wallet" });
+  }
+
+  const db = await pool.connect();
+  let previousClaim = null;
+  let hadExistingRow = false;
+
+  try {
+    await db.query("BEGIN");
+
+    const existing = await db.query(
+      `SELECT last_claim_at
+       FROM faucet_claims
+       WHERE wallet = $1
+       FOR UPDATE`,
+      [wallet]
+    );
+
+    if (existing.rows.length) {
+      hadExistingRow = true;
+      previousClaim = existing.rows[0].last_claim_at;
+
+      const last = new Date(previousClaim).getTime();
+      const now = Date.now();
+      const hours24 = 24 * 60 * 60 * 1000;
+
+      if (now - last < hours24) {
+        await db.query("ROLLBACK");
+        return res.json({ ok: false, error: "Faucet already claimed (24h limit)" });
+      }
+
+      await db.query(
+        `UPDATE faucet_claims
+         SET last_claim_at = NOW()
+         WHERE wallet = $1`,
+        [wallet]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO faucet_claims (wallet, last_claim_at)
+         VALUES ($1, NOW())`,
+        [wallet]
+      );
+    }
+
+    await db.query("COMMIT");
+  } catch (e) {
+    await db.query("ROLLBACK");
+    db.release();
+    console.error("faucet lock error:", e);
+    return res.status(500).json({ ok: false, error: "Faucet lock failed" });
+  }
+
+  db.release();
+
+  try {
+    const xrplClient = new xrpl.Client(process.env.XRPL_NETWORK || "wss://s1.ripple.com");
+    await xrplClient.connect();
+
+    const issuerWallet = xrpl.Wallet.fromSeed(process.env.CFC_ISSUER_SEED);
+
+    const tx = {
+      TransactionType: "Payment",
+      Account: issuerWallet.address,
+      Destination: wallet,
+      Amount: {
+        currency: process.env.CFC_CURRENCY,
+        issuer: process.env.CFC_ISSUER,
+        value: "25"
+      }
+    };
+
+    const prepared = await xrplClient.autofill(tx);
+    const signed = issuerWallet.sign(prepared);
+    const result = await xrplClient.submitAndWait(signed.tx_blob);
+    await xrplClient.disconnect();
+
+    if (result.result.meta.TransactionResult !== "tesSUCCESS") {
+      throw new Error("XRPL payment failed");
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    const undo = await pool.connect();
+    try {
+      await undo.query("BEGIN");
+
+      if (hadExistingRow) {
+        await undo.query(
+          `UPDATE faucet_claims
+           SET last_claim_at = $2
+           WHERE wallet = $1`,
+          [wallet, previousClaim]
+        );
+      } else {
+        await undo.query(
+          `DELETE FROM faucet_claims
+           WHERE wallet = $1`,
+          [wallet]
+        );
+      }
+
+      await undo.query("COMMIT");
+    } catch (undoErr) {
+      await undo.query("ROLLBACK");
+      console.error("faucet rollback error:", undoErr);
+    } finally {
+      undo.release();
+    }
+
+    console.error("faucet payment error:", e);
+    return res.status(500).json({ ok: false, error: "Faucet payment failed" });
+  }
+});
 // ------------------------------
 const PORT = process.env.PORT || 5000;
 // -------------------------------
