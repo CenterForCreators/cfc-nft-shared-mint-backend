@@ -1205,7 +1205,67 @@ app.post("/agent", async (req, res) => {
     });
   }
 });
+app.post("/api/reward-claim", async (req, res) => {
+  const { wallet, submissionId } = req.body;
 
+  if (!wallet || !submissionId) {
+    return res.status(400).json({ error: "Missing params" });
+  }
+
+  try {
+    // ✅ Check purchase + not already claimed
+    const orderCheck = await pool.query(
+      `SELECT id, reward_claimed FROM orders 
+       WHERE buyer_wallet = $1 
+       AND marketplace_nft_id = $2 
+       LIMIT 1`,
+      [wallet, submissionId]
+    );
+
+    if (!orderCheck.rows.length) {
+      return res.status(403).json({ error: "No valid purchase found" });
+    }
+
+    if (orderCheck.rows[0].reward_claimed) {
+      return res.status(400).json({ error: "Already claimed" });
+    }
+
+    // ✅ Send 100 CFC
+    const client = new xrpl.Client(process.env.XRPL_NETWORK);
+    await client.connect();
+
+    const sender = xrpl.Wallet.fromSeed(process.env.FAUCET_SEED);
+
+    const tx = {
+      TransactionType: "Payment",
+      Account: sender.address,
+      Destination: wallet,
+      Amount: {
+        currency: "CFC",
+        issuer: "rsxUkmjnAn8PRDz8RYrPusb9mTDYn5NqG8",
+        value: "100"
+      }
+    };
+
+    const prepared = await client.autofill(tx);
+    const signed = sender.sign(prepared);
+    await client.submitAndWait(signed.tx_blob);
+
+    await client.disconnect();
+
+    // ✅ Mark as claimed
+    await pool.query(
+      `UPDATE orders SET reward_claimed = TRUE WHERE id = $1`,
+      [orderCheck.rows[0].id]
+    );
+
+    return res.json({ success: true });
+
+  } catch (err) {
+    console.error("Reward claim error:", err);
+    return res.status(500).json({ error: "Failed to send reward" });
+  }
+});
 app.listen(PORT, () => {
   console.log("Marketplace backend running on port", PORT);
 });
