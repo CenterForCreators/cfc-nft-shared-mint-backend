@@ -1052,7 +1052,9 @@ try {
 } catch (e) {
   console.warn("XRPL tx lookup failed (non-fatal):", e?.data?.error || e.message);
 }
-
+if (!tx || tx.meta?.TransactionResult !== "tesSUCCESS") {
+  return res.json({ ok: true });
+}
 if (tx?.TransactionType === "NFTokenCreateOffer") {
   const nodes = tx.meta?.AffectedNodes || [];
 
@@ -1087,13 +1089,15 @@ if (tx?.TransactionType === "NFTokenCreateOffer") {
   return res.json({ ok: true });
 }
 
-    // ------------------------------
-    // PURCHASE (NFTokenAcceptOffer)
-    // ------------------------------
- const buyer = tx?.Account;
-    if (!metaBlob?.nft_id || !buyer) {
-      return res.json({ ok: true });
-    }
+   // PURCHASE (NFTokenAcceptOffer)
+if (tx.TransactionType !== "NFTokenAcceptOffer") {
+  return res.json({ ok: true });
+}
+
+const buyer = tx.Account;
+if (!metaBlob?.nft_id || !buyer) {
+  return res.json({ ok: true });
+}
 
     await client.query("BEGIN");
 
