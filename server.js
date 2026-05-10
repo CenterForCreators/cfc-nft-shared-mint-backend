@@ -507,8 +507,8 @@ app.post("/api/market/pay-xrp", async (req, res) => {
         submit: true,
         webhook: "https://cfc-nft-shared-mint-backend.onrender.com/api/xaman/webhook",
        return_url: {
-  web: "https://centerforcreators.com/nft-marketplace",
-  app: "https://centerforcreators.com/nft-marketplace"
+  web: "https://centerforcreators.com/learn-and-earn-experience",
+  app: "https://centerforcreators.com/learn-and-earn-experience"
 }
       },
       custom_meta: {
