@@ -587,7 +587,7 @@ const sellOfferIndex = String(offerRes.rows[0].sell_offer_index);
     const payload = {
       txjson: {
         TransactionType: "NFTokenAcceptOffer",
-        NFTokenSellOffer: nft.sell_offer_index_rlusd
+       NFTokenSellOffer: sellOfferIndex
       },
       options: {
   submit: true,
