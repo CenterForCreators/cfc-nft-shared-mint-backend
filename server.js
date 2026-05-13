@@ -561,11 +561,28 @@ app.post("/api/market/pay-rlusd", async (req, res) => {
       return res.status(404).json({ error: "NFT not found" });
     }
 
-    const nft = r.rows[0];
-    if (!nft.sell_offer_index_rlusd) {
-  return res.status(400).json({ error: "No RLUSD sell offer set for this NFT. Run create-sell-offer first." });
+   const nft = r.rows[0];
+
+const offerRes = await pool.query(
+  `
+  SELECT sell_offer_index
+  FROM marketplace_sell_offers
+  WHERE marketplace_nft_id = $1
+    AND currency = 'RLUSD'
+    AND COALESCE(status,'OPEN') = 'OPEN'
+  ORDER BY created_at ASC
+  LIMIT 1
+  `,
+  [id]
+);
+
+if (!offerRes.rows.length) {
+  return res.status(400).json({
+    error: "No RLUSD sell offer set for this NFT."
+  });
 }
 
+const sellOfferIndex = String(offerRes.rows[0].sell_offer_index);
 
     const payload = {
       txjson: {
